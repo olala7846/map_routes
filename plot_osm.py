@@ -8,7 +8,8 @@ OSM_FILE = 'taipei.osm'
 
 
 def main():
-  nodes, ways = parse_xml(OSM_FILE)
+  '''main function'''
+  _, ways = parse_xml(OSM_FILE)
   for way in ways.values():
     if way.get_name():
       print(way.get_name() + ' has ' +

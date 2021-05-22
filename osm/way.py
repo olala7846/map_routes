@@ -5,6 +5,7 @@ way.py
 import logging
 
 from xml.etree.ElementTree import Element
+from geojson import LineString
 from .exceptions import OsmXmlParseError
 
 
@@ -41,19 +42,27 @@ class Way:
           logging.warning('Key "k" not found in tag %s', child.tag)
 
   def get_way_id(self):
+    '''Return roald ID'''
     return self.way_id
 
   def get_name(self):
+    '''Return road name or None'''
     try:
       return self.tags[OSM_XML_TAG__WAY_TAG_KEY_NAME]
     except KeyError:
       return None
 
   def get_type(self):
+    '''Return way type (value of highway tag) or None'''
     try:
       return self.tags[OSM_XML_TAG__WAY_TAG_KEY_HIGHWAY]
     except KeyError:
-      return "None"
+      return None
+
+  def get_node_ids(self):
+    '''Return list of node IDs'''
+    return self.node_ids
 
   def get_nodes_count(self):
+    '''Return number of node in Way'''
     return len(self.node_ids)
