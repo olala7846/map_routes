@@ -4,7 +4,7 @@ import { Component, OnInit } from '@angular/core';
 import { Loader } from "@googlemaps/js-api-loader";
 import {} from 'google.maps';
 import { MapType } from '@angular/compiler';
-import {GOOGLE_MAPS_API_KEY} from './secrets';
+import { GOOGLE_MAPS_API_KEY } from './secrets';
 
 @Component({
   selector: 'app-map',
@@ -23,12 +23,12 @@ export class MapComponent implements OnInit {
       // language: 'zh-TW',
     });
     this.mapOptions = {
-      center: {  // Google BLD office (2930 Pearl Street).
-        lat: 40.0216,
-        lng: -105.25453,
+      center: {
+        lat: 25.0480331,
+        lng: 121.5329048,
       },
       zoom: 12,
-      maxZoom: 10,
+      maxZoom: 20,
       mapTypeId: 'roadmap',   // Default 'roadmap'
       streetViewControl: false,
     }
@@ -36,8 +36,14 @@ export class MapComponent implements OnInit {
 
   ngOnInit(): void {
     this.loader.load().then(() => {
-      let mapDiv = document.getElementById("map");
+      let mapDiv = document.getElementById('map');
       this.map = new google.maps.Map(mapDiv, this.mapOptions);
     });
+  }
+
+  onLoadGeoJson(): void {
+    const fileName = '/assets/roads.geojson';
+    this.map.data.loadGeoJson(fileName);
+    console.log('load ' + fileName);
   }
 }

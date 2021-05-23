@@ -22,4 +22,4 @@ and can be visualized using web UI tool https://geojson.io/
 
 /angular-maps-api-demo contains an Angular 2 App for visualizing data
 use `ng serve` to start app locally
-see /angular-maps-api-demo/README.md
+see [/angular-maps-api-demo/README.md](./angular-maps-api-demo/README.md)
