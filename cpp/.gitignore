@@ -1,0 +1,4 @@
+xerces-c-3.2.3
+.vscode
+route-planning/*.o
+route-planning/*.out
