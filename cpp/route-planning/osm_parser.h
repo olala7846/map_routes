@@ -2,16 +2,13 @@
 #define HCCHAO_OSMPARSER_H_
 
 #include <string>
+#include <vector>
+#include <unordered_map>
+#include <cstdint>
+#include "road_network.h"
 
 namespace hcchao
 {
-
-class MapNode {
-  public:
-    double lat;
-    double lng;
-};
-
 
 class OSMParser {
 public:
@@ -24,7 +21,7 @@ public:
 
   // Parse the OSM file and returns whether the parsing was successful
   // If failed, calls GetErrorMessage function for detailed error message.
-  bool ParseNodes();
+  bool ParseXml(std::unordered_map<int64_t, MapNode>& nodes);
 
   // Detailed error message on why an action failed.
   std::string GetErrorMessage() { return error_msg_; }
@@ -34,7 +31,8 @@ public:
 private:
   std::string filename_;  // OSM XML file name
   std::string error_msg_;  // detailed error message if error exists
-  // std::vector<std::unique_ptr<MapNode>> parsed_nodes_;
+
+  // test
   bool initialized_;
 
 };

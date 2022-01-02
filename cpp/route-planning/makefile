@@ -1,8 +1,11 @@
-main: main.o osm_parser.o
-	g++ main.o osm_parser.o -L /opt/lib -lxerces-c
+main: main.o osm_parser.o road_network.o
+	g++ main.o osm_parser.o road_network.o -L /opt/lib -lxerces-c
 
 main.o: main.cpp
 	g++ -c main.cpp -I /opt/include/
 
 osm_parser.o: osm_parser.cpp
 	g++ -c osm_parser.cpp -I /opt/include/ -std=c++11
+
+road_network.o: road_network.cpp
+	g++ -c road_network.cpp -I /opt/include/ -std=c++11
