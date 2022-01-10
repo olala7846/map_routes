@@ -114,6 +114,9 @@ def road_network_to_feature_collection(road_network: dict):
     for dest_id, _ in osm_node.arcs:
       dest_lonlat = get_lonlat(road_network, dest_id)
       lines.append([origin_lonlat, dest_lonlat])
+    if not lines:  # skip nodes without arcs
+      continue
+
     multi_line_string = MultiLineString(lines)
     features.append(Feature(geometry=multi_line_string))
     # force break for testing
