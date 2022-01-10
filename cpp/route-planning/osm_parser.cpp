@@ -7,20 +7,20 @@
 #include <cstdint>
 #include <utility>
 
+#include <xercesc/util/XMLUniDefs.hpp>
+#include <xercesc/util/XMLString.hpp>
 #include <xercesc/dom/DOM.hpp>
 #include <xercesc/parsers/XercesDOMParser.hpp>
 #include <xercesc/sax/HandlerBase.hpp>
 #include <xercesc/util/PlatformUtils.hpp>
+#include <xercesc/dom/DOMAttr.hpp>
+
+#include "osm_xml_utils.h"
 
 namespace hcchao
 {
 
-using xercesc::XercesDOMParser;
-using xercesc::XMLException;
-using xercesc::XMLString;
-using xercesc::DOMDocument;
-using xercesc::DOMElement;
-using xercesc::DOMNode;
+using namespace xercesc;
 
 OSMParser::OSMParser(std::string filename) : filename_(filename) {
   // TODO(hcchao@): find a better way to initialize XMLPlatformUtils.
@@ -29,14 +29,15 @@ OSMParser::OSMParser(std::string filename) : filename_(filename) {
   // create an RAII that ensures Initialize() and Terminate() being called
   // once properly without doing it in the constructor.
   try {
-    xercesc::XMLPlatformUtils::Initialize();
+    XMLPlatformUtils::Initialize();
     initialized_ = true;
   }
   catch (const XMLException& toCatch) {
+
     char* message = XMLString::transcode(toCatch.getMessage());
     std::stringstream ss;
-    ss << "Error during xerces XML initialization! :\n" << message << "\n";
-    XMLString::release(&message);
+    ss << "Error during xerces XML initialization! :\n"
+       << utils::toString(toCatch.getMessage()) << "\n";
     ss >> error_msg_;
     initialized_ = false;
   }
@@ -47,23 +48,7 @@ OSMParser::OSMParser(std::string filename) : filename_(filename) {
 }
 
 OSMParser::~OSMParser() {
-  xercesc::XMLPlatformUtils::Terminate();
-  // delete parsed_nodes_;
-}
-
-// Converts XMLCh* to std::string
-std::string toStdString(const XMLCh* raw_xml_str) {
-  char* temp = XMLString::transcode(raw_xml_str);
-  std::string std_str(temp);
-  XMLString::release(&temp);
-  return std_str;
-}
-
-// Wrapper function for extracting tag name as string, and more
-// importantly releasing resource.
-// https://stackoverflow.com/questions/9826518/purpose-of-xmlstringtranscode
-std::string getElementTagName(DOMElement* elem) {
-  return toStdString(elem->getTagName());
+  XMLPlatformUtils::Terminate();
 }
 
 bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
@@ -74,13 +59,12 @@ bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
   std::unique_ptr<XercesDOMParser> parser(new XercesDOMParser());
 
   // Disabling some parser capabilities (e.g. DTD and namespace) to make
-  // parsing faster.  See
-  // https://wiki.openstreetmap.org/wiki/OSM_XML#Basics
+  // parsing faster. See https://wiki.openstreetmap.org/wiki/OSM_XML#Basics
   parser->setValidationScheme(XercesDOMParser::Val_Never);
   parser->setDoNamespaces(false);  // optional
 
-  std::unique_ptr<xercesc::ErrorHandler> errHandler(
-      (xercesc::ErrorHandler*) new xercesc::HandlerBase());
+  std::unique_ptr<ErrorHandler> errHandler(
+      (ErrorHandler*) new HandlerBase());
   parser->setErrorHandler(errHandler.get());
 
   // Start parsing
@@ -88,19 +72,17 @@ bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
     parser->parse(filename_.c_str());
   }
   catch (const XMLException& toCatch) {
-    char* message = XMLString::transcode(toCatch.getMessage());
     std::stringstream ss;
-    ss << "Exception message is: \n" << message << "\n";
+    ss << "Exception message is: \n"
+       << utils::toString(toCatch.getMessage()) << "\n";
     ss >> error_msg_;
-    XMLString::release(&message);
     return false;
   }
-  catch (const xercesc::DOMRangeException& toCatch) {
-    char* message = XMLString::transcode(toCatch.msg);
+  catch (const DOMRangeException& toCatch) {
     std::stringstream ss;
-    ss << "Exception message is: \n" << message << "\n";
+    ss << "Exception message is: \n"
+       << utils::toString(toCatch.getMessage()) << "\n";
     ss >> error_msg_;
-    XMLString::release(&message);
     return false;
   }
   catch (...) {
@@ -108,9 +90,9 @@ bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
     return false;
   }
 
-  xercesc::DOMDocument* document = parser->getDocument();
+  DOMDocument* document = parser->getDocument();
   DOMElement* root = document->getDocumentElement();
-  std::string root_tag_name = getElementTagName(root);
+  std::string root_tag_name = utils::getElementName(root);
   if (root_tag_name != "osm") {
     std::stringstream ss;
     ss << "Unexpected root element (" << root_tag_name << ") in XML.";
@@ -119,22 +101,19 @@ bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
   }
 
   // First, construct all nodes.
-  XMLCh osmNodeTagName[10];
-  XMLString::transcode("node", osmNodeTagName, 9);
-  xercesc::DOMNodeList* node_list = document->getElementsByTagName(osmNodeTagName);
+  static const XMLCh kOsmNode[] = {chLatin_n, chLatin_o, chLatin_d, chLatin_e, chNull};
+  xercesc::DOMNodeList* node_list = document->getElementsByTagName(kOsmNode);
 
-  XMLCh osmLatAttrName[10];
-  XMLString::transcode("lat", osmLatAttrName, 9);
-  XMLCh osmLonAttrName[10];
-  XMLString::transcode("lon", osmLonAttrName, 9);
-  XMLCh osmIdAttrName[10];
-  XMLString::transcode("id", osmIdAttrName, 9);
+  static const XMLCh kOsmLat[] = {chLatin_l, chLatin_a, chLatin_t, chNull};
+  static const XMLCh kOsmLon[] = {chLatin_l, chLatin_o, chLatin_n, chNull};
+  static const XMLCh kOsmId[] = {chLatin_i, chLatin_d, chNull};
 
   for (XMLSize_t i = 0; i < node_list->getLength(); i++) {
     DOMElement* osm_node = (DOMElement* )node_list->item(i);
-    std::string node_id = toStdString(osm_node->getAttribute(osmIdAttrName));
-    std::string lat = toStdString(osm_node->getAttribute(osmLatAttrName));
-    std::string lon = toStdString(osm_node->getAttribute(osmLonAttrName));
+    std::string node_id = utils::toString(osm_node->getAttribute(kOsmId));
+    std::string lat = utils::toString(osm_node->getAttribute(kOsmLat));
+    std::string lon = utils::toString(osm_node->getAttribute(kOsmLon));
+    // std::cout << "node_id: " << node_id << std::endl;
     int64_t nid = std::stoll(node_id);
 
     // TODO(hcchao@): find a better way to convert string to int64_t.
@@ -146,29 +125,76 @@ bool OSMParser::ParseXml(std::unordered_map<int64_t, MapNode>& nodes) {
       std::cout << "parsed " << i+1 << " nodes\n";
     }
   }
-
   std::cout << "total " << nodes.size() << " nodes being parsed!\n";
+
   // Second, populate adjacency list from ways.
+  // https://wiki.openstreetmap.org/wiki/Way#Examples
+  //
+  // <way id="12345">
+  //   <nd ref="822403"/>
+  //   <nd ref="822404"/>
+  //   <nd ref="822405"/>
+  //     ...
+  //   <tag k="highway" v="motorway"/>
+  //   <tag k="name" v="Clipstone Street"/>
+  //   <tag k="oneway" v="yes"/>
+  // </way>
 
+  static const XMLCh kOsmWay[] = {chLatin_w, chLatin_a, chLatin_y, chNull};
+  static const XMLCh kOsmTag[] = {chLatin_t, chLatin_a, chLatin_g, chNull};
+  static const XMLCh kOsmTagKey[] = {chLatin_k, chNull};
+  static const XMLCh kOsmTagVal[] = {chLatin_v, chNull};
+  static const XMLCh kOsmTagKeyHighway[] = {
+    chLatin_h, chLatin_i, chLatin_g, chLatin_h,
+    chLatin_w, chLatin_a, chLatin_y, chNull
+  };
+  xercesc::DOMNodeList* way_list = document->getElementsByTagName(kOsmWay);
 
-  // XMLCh osmNodeTagName[10];
-  // XMLString::transcode("node", osmNodeTagName, 9);
-  // xercesc::DOMNodeList* node_list = document->getElementsByTagName(osmNodeTagName);
-  // for (XMLSize_t i = 0; i < node_list->getLength(); i++) {
-  //   xercesc::DOMNode* osmNode = node_list->item(i);
+  // See max speed in United States of America for Michigan
+  // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
+  static std::unordered_map<std::string, double> max_speed({
+    {"motorway", 70.0},
+    {"trunk", 55.0},
+    {"primary", 55.0},
+    {"secondary", 45.0},
+    {"tertiary", 35.0},
+    {"unclassified", 55.0},
+    {"residential", 25.0},
+    {"living_street", 25.0},
+    {"service", 25.0},
+  });
+  bool has_highway_tag = false;
+  bool is_one_way = false;
+  std::string highway;
 
-  //   // std::unique_ptr<MapNode> node_ptr(new MapNode());
-  //   parsed_nodes_.emplace_back(new MapNode());
-  //   // TODO(hcchao@): parse nodes and store it in an collection (e.g. vector)
-  //   std::cout << "found node";
-  // }
+  for (XMLSize_t i = 0; i < way_list->getLength(); i++) {
+    DOMElement* way_node = (DOMElement *)way_list->item(i);
+    std::unordered_map<std::string, std::string> tags =
+        utils::getWayTags(way_node);
+
+    // Skip ways that are nothighway. (e.g. waterway, park ... etc)
+    if (tags.find("highway") == tags.end()) {
+      continue;
+    }
+    highway = tags["highway"];
+    bool is_one_way = false;
+    if (tags.find("oneway") != tags.end() && tags["oneway"] == "yes") {
+      is_one_way = true;
+    }
+    std::vector<int64_t> node_ids = utils::getWayNodes(way_node);
+    int64_t src_id, dest_id;
+    for(int i = 0; i < node_ids.size() - 1; i++) {
+      src_id = node_ids[i];
+      dest_id = node_ids[i+1];
+      nodes.find(src_id)->second.AddArc(dest_id, utils::toEnum(highway));
+    }
+
+    // TODO(hcchao@): calculates arc cost
+  }
+
 
   return true;
 }
-
-// std::vector<std::unique_ptr<MapNode>> OSMParser::GetParsedNodes() {
-//   return std::move(parsed_nodes_);
-// }
 
 
 } // namespace hcchao

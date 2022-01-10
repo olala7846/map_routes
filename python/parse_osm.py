@@ -11,12 +11,16 @@ import geopy.distance
 from absl import app
 from absl import flags
 from exceptions import OsmError
+from geojson import Feature, FeatureCollection, MultiLineString, dumps
 
 
 # ABSL flags: https://abseil.io/docs/python/guides/flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('filename', 'data/taipei_daan.osm', 'OSM file to be parsed.')
+flags.DEFINE_bool(
+  'output_geojson', False,
+  'Wheather to output the parsed road network as a GeoJSON fole for not')
 
 logger = logging.getLogger('parse_osm.py')
 
@@ -46,7 +50,7 @@ class OsmNode:
     self.node_id = node_id
     self.lat = lat
     self.lon = lon
-    self.arcs = []
+    self.arcs = []  # tuple of (destination_id, and cost)
 
   def add_arc(self, dest_id, cost):
     self.arcs.append((dest_id, cost))
@@ -55,7 +59,7 @@ class OsmNode:
 def parse_node(xml_node):
   attributes = xml_node.attrib
   node_id = attributes['id']
-  return node_id, OsmNode(node_id, attributes['lat'], attributes['lon'])
+  return node_id, OsmNode(node_id, float(attributes['lat']), float(attributes['lon']))
 
 
 def parse_way(xml_way):
@@ -98,6 +102,24 @@ def calculate_cost(src_node, dest_node, speed_limit):
   return distance / speed_limit
 
 
+def road_network_to_feature_collection(road_network: dict):
+  def get_lonlat(road_network, node_id):
+    node = road_network[node_id]
+    return (node.lon, node.lat)
+
+  features = []
+  for node_id, osm_node in road_network.items():
+    lines = []
+    origin_lonlat = get_lonlat(road_network, node_id)
+    for dest_id, _ in osm_node.arcs:
+      dest_lonlat = get_lonlat(road_network, dest_id)
+      lines.append([origin_lonlat, dest_lonlat])
+    multi_line_string = MultiLineString(lines)
+    features.append(Feature(geometry=multi_line_string))
+    # force break for testing
+  logger.info('Total %d features in collection.', len(features))
+
+  return FeatureCollection(features)
 
 def parse_osm_xml(filename):
   tree = ET.parse(filename)
@@ -126,6 +148,12 @@ def parse_osm_xml(filename):
   logger.info('there are total %d nodes, %d of them are connected to roads',
         num_nodes, len(nodes_with_road))
 
+  if FLAGS.output_geojson:
+    out_filename_parts = FLAGS.filename.split('.')
+    out_filename_parts[-1] = 'geojson'  # replace file extension to geojson
+    feature_collection = road_network_to_feature_collection(road_network)
+    with open('.'.join(out_filename_parts), 'w') as out_file:
+      out_file.write(dumps(feature_collection))
 
 
 

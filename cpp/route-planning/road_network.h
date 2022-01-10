@@ -9,17 +9,46 @@
 namespace hcchao
 {
 
+enum class HighwayType {
+  kUnknown,
+  kMotorway,
+  kTrunk,
+  kPrimary,
+  kSecondary,
+  kTertiary,
+  kUnclassified,
+  kResidential,
+  kLivingStreet,
+  kService
+};
+
+// Represents an arc on the map (directed connection between nodes).
+class MapArc {
+public:
+  explicit MapArc(int64_t source_id, int64_t dest_id, HighwayType type);
+  ~MapArc();
+
+private:
+  int64_t source_id_;
+  int64_t destination_id_;
+  HighwayType type_;
+  double cost_;
+  // TODO(hcchao@): road type and cost
+};
+
 // Represents a node on the map
 class MapNode {
 public:
   explicit MapNode(int64_t id, double lat, double lon);
   ~MapNode() = default;
 
+  void AddArc(int64_t dest_node_id, HighwayType highway_type);
+
+private:
   int64_t id_;
   double lat_;  // [-90.0, 90.0]
   double lon_;  // [-180.0, 180.0]
-  // Adjancency list, representing a directed arc from this node to neighbour.
-  std::vector<int64_t> neighbours;
+  std::vector<MapArc> outgoing_arcs_;
 };
 
 // A directed graph parsed from OSM file.
