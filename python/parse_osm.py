@@ -1,17 +1,21 @@
 # OSM file parser
 #
 # Usage:
-#  python parse_osm.py
+#  python parse_osm.py \
+#     --filename=data/taipei.osm \
+#     --output_geojson
 
 import logging
-import math
+import random
 import xml.etree.ElementTree as ET
+import heapq
 
 import geopy.distance
 from absl import app
 from absl import flags
 from exceptions import OsmError
-from geojson import Feature, FeatureCollection, MultiLineString, dumps
+from geojson import Feature, FeatureCollection, MultiLineString, LineString
+from geojson import dumps
 
 
 # ABSL flags: https://abseil.io/docs/python/guides/flags
@@ -51,6 +55,10 @@ class OsmNode:
     self.lat = lat
     self.lon = lon
     self.arcs = []  # tuple of (destination_id, and cost)
+
+  def __str__(self):
+    return 'OsmNode(id={}, lat={}, lon={})'.format(
+      self.node_id, self.lat, self.lon)
 
   def add_arc(self, dest_id, cost):
     self.arcs.append((dest_id, cost))
@@ -125,6 +133,7 @@ def road_network_to_feature_collection(road_network: dict):
   return FeatureCollection(features)
 
 def parse_osm_xml(filename):
+  logger.info('Will start parsing "%s"', filename)
   tree = ET.parse(filename)
   root = tree.getroot()
   if root.tag != 'osm':
@@ -144,12 +153,21 @@ def parse_osm_xml(filename):
         cost = calculate_cost(src_node, dest_node, speed_limit)
         src_node.add_arc(dest_id, cost)
 
-  # parse finish, print statistics
-  num_nodes = len(road_network.values())
-  nodes_with_road = list(filter(lambda nd: len(nd.arcs) > 0, iter(road_network.values())))
+  # Remove nodes that are not connected by the road network
+  all_node_ids = set(road_network.keys())
+  connected_node_ids = set()
+  for node_id, node in road_network.items():
+    if len(node.arcs) > 0:
+      connected_node_ids.add(node_id)
+      for dest_node_id, _ in node.arcs:
+        connected_node_ids.add(dest_node_id)
+  unconnected_nodes = all_node_ids - connected_node_ids
+  for node_id in unconnected_nodes:
+    del road_network[node_id]
+  logger.info(
+    'Deleted %d unconnected nodes, %d left',
+    len(unconnected_nodes), len(connected_node_ids))
 
-  logger.info('there are total %d nodes, %d of them are connected to roads',
-        num_nodes, len(nodes_with_road))
 
   if FLAGS.output_geojson:
     out_filename_parts = FLAGS.filename.split('.')
@@ -158,12 +176,63 @@ def parse_osm_xml(filename):
     with open('.'.join(out_filename_parts), 'w') as out_file:
       out_file.write(dumps(feature_collection))
 
+  return road_network
+
+
+def dijkstra_search(src_id, dest_id, road_network):
+  frontier = [(0, src_id, src_id)]  # (cost, node_id, origin_node_id)
+  explored = set()
+  source_map = dict()  # records where each node was from
+
+  while frontier:
+    curr_cost, curr_node_id, origin_node_id = heapq.heappop(frontier)
+
+    if curr_node_id in explored:  # already there
+      continue
+    # mark node as explored and record the origin when first time reaching the node
+    explored.add(curr_node_id)
+    source_map[curr_node_id] = origin_node_id
+
+    if curr_node_id == dest_id:  # found
+      path_rev = []
+      path_node_id = dest_id
+      while path_node_id != source_map[path_node_id]:
+        path_rev.append(path_node_id)
+        path_node_id = source_map[path_node_id]
+      path_rev.append(src_id)
+      path_rev.reverse()
+      return path_rev
+
+    curr_node = road_network[curr_node_id]
+    for arc_dest, arc_cost in curr_node.arcs:
+      heapq.heappush(frontier, (curr_cost + arc_cost, arc_dest, curr_node_id))
+
+
+def draw_route_found(route, road_network):
+  line_string = []
+  for node_id in route:
+    osm_node = road_network[node_id]
+    line_string.append((osm_node.lon, osm_node.lat))
+  features = [Feature(geometry=LineString(line_string))]
+  feature_collection = FeatureCollection(features)
+  with open('data/route_found.geojson', 'w') as out_file:
+    out_file.write(dumps(feature_collection))
 
 
 def main(argv):
-  logger.info('Will start parsing "%s"', FLAGS.filename)
+  road_network = parse_osm_xml(FLAGS.filename)
+  random.seed(42)
+  node_ids = list(road_network.keys())
+  src_id = random.choice(node_ids)
+  dest_id = random.choice(node_ids)
+  logger.info(
+      'Find route from %s to %s.',
+      road_network[src_id], road_network[dest_id])
 
-  parse_osm_xml(FLAGS.filename)
+  route = dijkstra_search(src_id, dest_id, road_network)
+  logger.info('Returned route is: %s', route)
+
+  draw_route_found(route, road_network)
 
 
 if __name__ == '__main__':
