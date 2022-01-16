@@ -16,6 +16,7 @@ from absl import flags
 from exceptions import OsmError
 from geojson import Feature, FeatureCollection, MultiLineString, LineString
 from geojson import dumps
+from collections import defaultdict
 
 
 # ABSL flags: https://abseil.io/docs/python/guides/flags
@@ -25,6 +26,10 @@ flags.DEFINE_string('filename', 'data/taipei_daan.osm', 'OSM file to be parsed.'
 flags.DEFINE_bool(
   'output_geojson', False,
   'Wheather to output the parsed road network as a GeoJSON fole for not')
+flags.DEFINE_enum('search_algorithm', 'dijkstra', [
+  'dijkstra',
+  'a_star'],
+  'Algorithm to use for searching route.')
 
 logger = logging.getLogger('parse_osm.py')
 
@@ -110,7 +115,7 @@ def calculate_cost(src_node, dest_node, speed_limit):
   return distance / speed_limit
 
 
-def road_network_to_feature_collection(road_network: dict):
+def to_geojson_feature_collection(road_network: dict):
   def get_lonlat(road_network, node_id):
     node = road_network[node_id]
     return (node.lon, node.lat)
@@ -172,40 +177,88 @@ def parse_osm_xml(filename):
   if FLAGS.output_geojson:
     out_filename_parts = FLAGS.filename.split('.')
     out_filename_parts[-1] = 'geojson'  # replace file extension to geojson
-    feature_collection = road_network_to_feature_collection(road_network)
+    feature_collection = to_geojson_feature_collection(road_network)
     with open('.'.join(out_filename_parts), 'w') as out_file:
       out_file.write(dumps(feature_collection))
 
   return road_network
 
+def reconstruct_path(dest_id, came_from):
+  path = []
+  node_id = dest_id
+  while came_from[node_id] != node_id:
+    path.append(node_id)
+    node_id = came_from[node_id]
+  path.reverse()
+  return path
+
 
 def dijkstra_search(src_id, dest_id, road_network):
-  frontier = [(0, src_id, src_id)]  # (cost, node_id, origin_node_id)
   explored = set()
-  source_map = dict()  # records where each node was from
+  came_from = {src_id: src_id} # records where each node was from
+  g_score = defaultdict(lambda : float('inf'))
+  g_score[src_id] = 0.0
+  frontier = [(0, src_id)]  # (cost, node_id)
 
   while frontier:
-    curr_cost, curr_node_id, origin_node_id = heapq.heappop(frontier)
+    unused_eval_score, curr_node_id = heapq.heappop(frontier)
+    if curr_node_id in explored:  # already there
+      continue
+
+    if curr_node_id == dest_id:
+      return reconstruct_path(dest_id, came_from)
+
+    explored.add(curr_node_id)
+    curr_node = road_network[curr_node_id]
+    for arc_dest, arc_cost in curr_node.arcs:
+      tentative_g_score = g_score[curr_node_id] + arc_cost
+      if tentative_g_score < g_score[arc_dest]:
+        g_score[arc_dest] = tentative_g_score
+        came_from[arc_dest] = curr_node_id
+        heapq.heappush(frontier, (tentative_g_score, arc_dest))
+
+def a_star_search(src_id, dest_id, road_network):
+  """A* search algorithm.
+    Evaluation function: f(n) = g(n) + h(n)
+    f(n): estimated cost of the best path from n to goal.
+    g(n): cost of the path from source to node n.
+    h(n): heuristic function, here is the manhaton distance.
+
+  """
+  def heuristic(from_id, to_id, road_network):
+    """ Calculate heuristic cost from node to node.
+    Assuming there's a 'motorway': 31.2928 between from_node to to_node
+    """
+    from_node = road_network[from_id]
+    to_node = road_network[to_id]
+    max_speed = SPEED_MAP['motorway']
+    return calculate_cost(from_node, to_node, max_speed)
+
+  explored = set()
+  came_from = {src_id: src_id}
+  g_score = defaultdict(lambda : float('inf'))
+  g_score[src_id] = 0.0
+  frontier = [(0 + heuristic(src_id, dest_id, road_network), src_id)]  # (cost, node_id)
+
+  while frontier:
+    unused_eval_score, curr_node_id = heapq.heappop(frontier)
+    if curr_node_id == dest_id:
+      return reconstruct_path(dest_id, came_from)
 
     if curr_node_id in explored:  # already there
       continue
-    # mark node as explored and record the origin when first time reaching the node
+
     explored.add(curr_node_id)
-    source_map[curr_node_id] = origin_node_id
-
-    if curr_node_id == dest_id:  # found
-      path_rev = []
-      path_node_id = dest_id
-      while path_node_id != source_map[path_node_id]:
-        path_rev.append(path_node_id)
-        path_node_id = source_map[path_node_id]
-      path_rev.append(src_id)
-      path_rev.reverse()
-      return path_rev
-
     curr_node = road_network[curr_node_id]
     for arc_dest, arc_cost in curr_node.arcs:
-      heapq.heappush(frontier, (curr_cost + arc_cost, arc_dest, curr_node_id))
+      tentative_g_score = g_score[curr_node_id] + arc_cost
+      if tentative_g_score < g_score[arc_dest]:
+        g_score[arc_dest] = tentative_g_score
+        came_from[arc_dest] = curr_node_id
+        heapq.heappush(frontier, (
+          tentative_g_score + heuristic(arc_dest, dest_id, road_network),
+          arc_dest))
+  return []
 
 
 def draw_route_found(route, road_network):
@@ -229,7 +282,13 @@ def main(argv):
       'Find route from %s to %s.',
       road_network[src_id], road_network[dest_id])
 
-  route = dijkstra_search(src_id, dest_id, road_network)
+  route = None
+  if FLAGS.search_algorithm == 'dijkstra':
+    route = dijkstra_search(src_id, dest_id, road_network)
+  elif FLAGS.search_algorithm == 'a_star':
+    route = a_star_search(src_id, dest_id, road_network)
+  else:
+    raise Exception('unknown algorith "{}"'.format(FLAGS.search_algorithm))
   logger.info('Returned route is: %s', route)
 
   draw_route_found(route, road_network)
