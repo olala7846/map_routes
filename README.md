@@ -3,20 +3,13 @@
 Data: taipei.osm
 Data format: https://wiki.openstreetmap.org/wiki/OSM_XML
 
-# Utility Scripts
-* xml_analysis.py: count number of Nodes, Way ... in the OSM file
-  ```
-  $ python3 xml_analysis.py
+# OSM Parser
+* Python implementation for OSM parser.
 
-  defaultdict(<class 'int'>, {'bounds': 1, 'node': 44616, 'way': 6687, 'relation': 572})
-  ```
+# OSM NX
 
 
-# Data Format
 
-Data can be converted into GeoJSON data (https://geojson.org/)
-`pip3 install geojson`
-and can be visualized using web UI tool https://geojson.io/
 
 # Visualization App
 

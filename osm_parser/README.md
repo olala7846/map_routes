@@ -22,4 +22,4 @@ See parse_osm.py for more detail implementation on parsing and routing logic.
 * There are some really handy Python library:
   * geojson: Eazy converting graph into RFC7946 GeoJSON format (Easy visualization using online tools or github)
   * geopy: calculating distance between coordinates (lon, lat), and convert between unites (km, miles).
-
+* It would be better to use existing tools like OSMnx to avoid hand crafting duplicate works.
