@@ -18,7 +18,7 @@ import numpy as np
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-  "roadnetwork_file", "./data/taipei_taiwan.graphml",
+  "roadnetwork_file", "./data/greater_taipei.graphml",
   "Road network graph (graphml) file to use")
 
 flags.DEFINE_integer("sample_count", 10, "Number of routes to compare")
@@ -51,7 +51,7 @@ def main(argv):
     logger.error("Road network file %s not found", FLAGS.roadnetwork_file)
     return
 
-  logger.info("Loading road network from file...")
+  logger.info("Loading road network from file %s...", FLAGS.roadnetwork_file)
   G = ox.load_graphml(FLAGS.roadnetwork_file)
 
   random.seed(42)
@@ -59,8 +59,13 @@ def main(argv):
 
   dijkstra_time = profile_algorithm(G, orig_dest_pairs, dijkstra_shortest_path)
   a_star_time = profile_algorithm(G, orig_dest_pairs, a_star_shortest_path)
-  logger.info("Dijkstra: mean(%f) std(%f)", np.mean(dijkstra_time), np.std(dijkstra_time))
-  logger.info("A-Star: mean(%f) std(%f)", np.mean(a_star_time), np.std(a_star_time))
+  logger.info("Finish sampling %d routes.", FLAGS.sample_count)
+  logger.info(
+    "Dijkstra: mean(%f) std(%f) 95%%tile(%f)",
+    np.mean(dijkstra_time), np.std(dijkstra_time), np.percentile(dijkstra_time, 95))
+  logger.info(
+    "A-Star: mean(%f) std(%f) 95%%tile(%f)",
+    np.mean(a_star_time), np.std(a_star_time), np.percentile(a_star_time, 95))
 
 
 

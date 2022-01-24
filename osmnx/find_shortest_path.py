@@ -1,7 +1,12 @@
 # Find shortest path and visualize
 #
 # Usage:
-#  python find_shortest_path.py
+#  python find_shortest_path.py \
+#     --roadnetwork_file="./data/taiwan.graphml" \
+#     --destination="25.1240308,121.6475832" \
+#     --algorithm=a_star
+#     --visualize
+
 
 from absl import app
 from absl import flags
@@ -20,7 +25,7 @@ FLAGS = flags.FLAGS
 
 
 flags.DEFINE_string(
-  "roadnetwork_file", "./data/taipei_taiwan.graphml",
+  "roadnetwork_file", "./data/greater_taipei.graphml",
   "Road network graph (graphml) file to use")
 
 flags.DEFINE_string(
@@ -29,6 +34,8 @@ flags.DEFINE_string(
 flags.DEFINE_string(
   "destination", "25.0382115,121.5533113",
   "Route destination lat,lon")
+
+flags.DEFINE_bool("visualize", False, "whether to visualize the route or not.")
 
 flags.DEFINE_enum("algorithm", "dijkstra", [
   "dijkstra", "a_star", "two_way_dijkstra", "CH"
@@ -83,13 +90,18 @@ def main(argv):
     raise NotImplemented("Algorithm {} not implemented".format(algorithm))
   t_end = time.process_time()
   logger.info("%s routes took %f seconds", algorithm, t_end - t_start)
-  fig, ax = ox.plot_graph_routes(
-    G, [osmnx_route, route], route_colors=['r', 'g'],
-    route_linewidths=2, orig_dest_size=4,
-    filepath="./data/routes.png", save=True, edge_linewidth=0.5,
-    dpi=1000, node_size=1)
+  route_equals = _route_equals(osmnx_route, route)
+  logger.info("Route equals: %s", route_equals)
+  if not route_equals:
+    logger.error("The route found is not the shortest path.")
+  if not route_equals or FLAGS.visualize:
+    logger.info("Visualizing...")
+    fig, ax = ox.plot_graph_routes(
+      G, [osmnx_route, route], route_colors=['r', 'g'],
+      route_linewidths=2, orig_dest_size=4,
+      filepath="./data/routes.png", save=True, edge_linewidth=0.5,
+      dpi=1000, node_size=1)
 
-  logger.info("Route equals: %s", _route_equals(route, route))
 
 
 if __name__ == '__main__':
