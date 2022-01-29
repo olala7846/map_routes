@@ -23,3 +23,11 @@ See parse_osm.py for more detail implementation on parsing and routing logic.
   * geojson: Eazy converting graph into RFC7946 GeoJSON format (Easy visualization using online tools or github)
   * geopy: calculating distance between coordinates (lon, lat), and convert between unites (km, miles).
 * It would be better to use existing tools like OSMnx to avoid hand crafting duplicate works.
+
+### CPP
+Xerces parser is **extremely** slow. It does not parse the XML line by line but try to parse the
+whole XML before returning any node, which is not idea in OSM XML case. Also OSM xml file has
+many unnecessary info (user related tags, building, recreation area ...) so we also need to
+do a full Dijkstra to find the connected component (assuming it will be the road network) and
+delete anything else.
+
