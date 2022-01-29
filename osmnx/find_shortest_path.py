@@ -11,13 +11,15 @@
 from absl import app
 from absl import flags
 from os.path import exists
+from routing_algorithms import a_star_shortest_path
+from routing_algorithms import dijkstra_shortest_path
+from pathfinder import DijkstraPathFinder
+from pathfinder import AStarPathFinder
 import logging
 import matplotlib
 import networkx as nx
 import osmnx as ox
 import time
-from routing_algorithms import dijkstra_shortest_path
-from routing_algorithms import a_star_shortest_path
 
 
 # ABSL flags: https://abseil.io/docs/python/guides/flags
@@ -63,7 +65,7 @@ def main(argv):
     logger.error("Road network file %s not found", FLAGS.roadnetwork_file)
     return
 
-  logger.info("Loading road network from file...")
+  logger.info("Loading road network from file %s", FLAGS.roadnetwork_file)
   G = ox.load_graphml(FLAGS.roadnetwork_file)
 
   orig_lat, orig_lon = [float(x) for x in FLAGS.origin.split(',')]
@@ -74,22 +76,25 @@ def main(argv):
   logger.info("origin- id: %d, lat: %f, lon: %f", orig_id, orig_lat, orig_lon)
   logger.info("destination- id:%d, lat: %f, lon: %f", dest_id, dest_lat, dest_lon)
 
+
   t_start = time.process_time()
   osmnx_route = ox.shortest_path(G, orig_id, dest_id, weight="length")
   t_end = time.process_time()
   logger.info("OSMnx routes took %f seconds", t_end - t_start)
 
-  route = None
   algorithm = FLAGS.algorithm
-  t_start = time.process_time()
-  if algorithm == 'dijkstra':
-    route = dijkstra_shortest_path(G, orig_id, dest_id, weight="length")
-  elif algorithm == 'a_star':
-    route = a_star_shortest_path(G, orig_id, dest_id, weight="length")
+  path_finder = DijkstraPathFinder(G)
+  if algorithm == 'a_star':
+    logger.info("Using A* Distance Heuristic")
+    path_finder = AStarPathFinder(G)
   else:
-    raise NotImplemented("Algorithm {} not implemented".format(algorithm))
+    logger.info("Using DijkstraPathFinder")
+
+  t_start = time.process_time()
+  route = path_finder.find_shortest_path(orig_id, dest_id)
   t_end = time.process_time()
-  logger.info("%s routes took %f seconds", algorithm, t_end - t_start)
+  logger.info("%s routes took %f seconds", path_finder.name, t_end - t_start)
+
   route_equals = _route_equals(osmnx_route, route)
   logger.info("Route equals: %s", route_equals)
   if not route_equals:
