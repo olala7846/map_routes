@@ -32,18 +32,16 @@ flags.DEFINE_bool('visualize', True, 'Whether to output downloaded graph as imag
 logger = logging.getLogger('download_roald_network.py')
 
 BASE_FILE_PATH = "./data/"
+BASE_NETWORK_PATH = "./network/"
 
-class FlagException(BaseException):
-  pass
 
 
 def main(argv):
   logger.info("Using osmnx version %s", ox.__version__)
 
-
   road_network = None
   if FLAGS.bbox and FLAGS.city:
-    raise FlagException("Can't have both --bbox and --city beingset")
+    raise FlagException("Can't have both --bbox and --city being set")
 
   graphml_filename = None
   image_filename = None
@@ -56,7 +54,12 @@ def main(argv):
     image_filename = BASE_FILE_PATH + bbox_name + '.png'
     graphml_filename = BASE_FILE_PATH + bbox_name + '.graphml'
 
-  if exists(graphml_filename):
+  gpickle_filename = BASE_NETWORK_PATH + city_name + '.gpickle'
+
+  if exists(gpickle_filename):
+    logger.info("Found existing gpickle file %s ...", gpickle_filename)
+    road_network = nx.read_gpickle(gpickle_filename)
+  elif exists(graphml_filename):
     logger.info("Found existing graphml file %s ...", graphml_filename)
     road_network = ox.load_graphml(graphml_filename)
   elif FLAGS.city:
@@ -78,7 +81,6 @@ def main(argv):
     logger.error("Unexpected error.")
     return
 
-
   if FLAGS.visualize:
     fig, ax = ox.plot_graph(
       road_network,
@@ -95,6 +97,12 @@ def main(argv):
   edges = road_network.edges
   logger.info("Number of edges: %d", len(edges))
   logger.info("An edge looks like: %s", edges[(9402576490, 2612435152, 0)])
+
+  # Test writing file as NextworkX gpickle file
+  # https://networkx.org/documentation/stable/reference/readwrite/gpickle.html
+  if not exists(gpickle_filename):
+    logging.info("%s not found, create one", gpickle_filename)
+    nx.write_gpickle(road_network, gpickle_filename)
 
 
 

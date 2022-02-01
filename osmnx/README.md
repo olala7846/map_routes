@@ -12,6 +12,10 @@
 
 Build upon [GeoPandas](https://geopandas.org/en/stable/) and [NetworkX](https://networkx.org/)
 
+## NetworkX
+* [GrapView](https://networkx.org/documentation/stable/reference/classes/index.html#module-networkx.classes.graphviews) provides helpful methods like [reversing a graph](https://networkx.org/documentation/stable/reference/classes/generated/networkx.classes.graphviews.reverse_view.html#networkx.classes.graphviews.reverse_view) which can be very helpful when calculating landmark heuristic.
+
+
 ## GraphML
 http://graphml.graphdrawing.org/primer/graphml-primer.html
 
@@ -22,12 +26,18 @@ http://graphml.graphdrawing.org/primer/graphml-primer.html
 ### Set up instruction
 [Installation guide](https://osmnx.readthedocs.io/en/stable/) or `pip install osmnx`
 
+## Road Network
+In the Taiwan road network: there are about 229378 nodes and 592208 arcs(edges).
+
+
 
 ## Learnings
 
-When comparing Dijkstra and A-Star in a city area, A-Star is not always faster. For example, for shortest route at about 60 nodes, Dijkstra explored 6555 nodes, A-star explored 1704 nodes. But each step calculating A_star cost is more than 6 times expensive then Dijkstra.
+When comparing Dijkstra and A* in a city area, A* is not always faster in the following scenarios:
+ * For euclidiance distance heuristic. A route with 60 nodes, Dijkstra explored 6555 nodes, A-star explored 1704 nodes. But how we calculate the euclidiance distance vastly affects the performance of A*; For example, great circle distance taks a long time to calculate vs cartesian distance is super fast
+ * For longer route accross Taiwan (e.g. Taipei to Kaohsiung), pretty much both algorithm will explore/setting the whole graph, hence it's not helping much.
+  ![Results](img/taiwam_dijkstra_astar.png)
 
-To verify this assumption, we need larger city in order to test it..
 
 ### Algorithm
 
@@ -40,6 +50,14 @@ We simply append a new set (new_cost, node) into the heap and ignore any already
 nature of road network (almost a planer graph).
 
 #### A*
+
+Heuristics must be admissive (under estimate the real cost) and monotone (suffice the triangular inequality). Landmark heuristic takes a long time to precompute but is in general "closer" (under estimate less) to the real cost, hence can provide a better guidance to the real shortest path.
+
+![Heuristics](img/heuristics.png)
+![Landmark Speed](img/landmark_speed.png)
+
+See compare_hueristics.py
+
 
 * Euclidiance distance heuristic
 * Landmark heuristic
@@ -61,4 +79,5 @@ nature of road network (almost a planer graph).
     ```
     h(u,v) == max( dist(u,l)-dist(v,l), dist(l,v)-dist(l,u) ) <= dist(u.v)
     ```
+
 
