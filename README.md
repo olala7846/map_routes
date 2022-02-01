@@ -3,10 +3,12 @@
 ## OSM data parser
 
 A OSM (Open Street Map) data format parser. Parses the road network into a MultiDigraph (Could have multiple edges between two nodes, directed graph)
-
-* See [osm_parser](./osm_parser/README.md) folder for detailed instruction and learnings.
+Project is located in [osm_parser](./osm_parser/README.md) folder.
 
 * Data format: https://wiki.openstreetmap.org/wiki/OSM_XML
+* Learning:
+  * Xerces parser is very slow.
+  * [osmnx](https://osmnx.readthedocs.io/) is an awesome library
 
 
 ## Routing Algorithm
