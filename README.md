@@ -1,17 +1,27 @@
-# OSM data parser
+# Advance Routing Algorithm
 
-Data: taipei.osm
-Data format: https://wiki.openstreetmap.org/wiki/OSM_XML
+## OSM data parser
 
-# OSM Parser
-* Python implementation for OSM parser.
+A OSM (Open Street Map) data format parser. Parses the road network into a MultiDigraph (Could have multiple edges between two nodes, directed graph)
 
-# OSM NX
+* See [osm_parser](./osm_parser/README.md) folder for detailed instruction and learnings.
 
-
+* Data format: https://wiki.openstreetmap.org/wiki/OSM_XML
 
 
-# Visualization App
+## Routing Algorithm
+Implement different routing (shortest path) algorithm and comparse the results.
+See [osmnx](./osmnx/README.md) filder for more.
+
+* Algorithms Dijkstra, A* (different heuristics).
+* Arc flag (TODO)
+* Contraction Heirarchy (TODO)
+
+
+
+## Legacy Projects
+
+### Visualization App
 
 /angular-maps-api-demo contains an Angular 2 App for visualizing data
 use `ng serve` to start app locally
