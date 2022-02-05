@@ -1,0 +1,27 @@
+// Road Network proto definition
+// protoc -I=./proto --python_out=./proto/gen ./proto/road_network.proto
+
+syntax = "proto2";
+
+
+message RoadNetworkNode {
+  // OSM ID node as defined in https://wiki.openstreetmap.org/wiki/Node#Structure
+  // Lat, lon needs to be 64 bits floating point (7 rounded decimal places precision)
+  required int64 osmid = 1;
+  optional double latitude = 2;
+  optional double longitude = 3;
+}
+
+// Concept of an arc is different from an OSM Way. An is a link
+// between two nodes (road segments).
+ message RoadNetworkArc {
+  required int64 source_id = 1;
+  required int64 destination_id = 2;
+  // length of an arc.
+  optional float length = 3;
+}
+
+message RoadNetwork {
+  repeated RoadNetworkNode nodes = 1;
+  repeated RoadNetworkArc arcs = 2;
+}

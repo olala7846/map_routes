@@ -1,7 +1,9 @@
 # Compares differnet routing algorithms
 #
 # Usage:
-#  python compare_routing_algorithm.py --count=50 --plot=true
+#  python compare_routing_algorithm.py \
+#     --count=50 --region="Taipei, Taiwan" \
+#     --num_landmarks=10
 
 from absl import app
 from absl import flags
@@ -27,6 +29,7 @@ flags.DEFINE_string(
   'region', 'Greater Taipei', 'Region name of road network to use')
 
 flags.DEFINE_integer('count', 10, 'Number of routes to compare')
+flags.DEFINE_integer('num_landmarks', 10, 'Number of routes to compare')
 flags.DEFINE_bool('plot', True, 'To plot the profile results or not.')
 flags.DEFINE_enum(
   'y_axis', 'time', ['time', 'settled'],'Value to use for compare (y-axis).')
@@ -51,6 +54,8 @@ def profile_algorithm(pathfinder, orig_dest_pairs):
   all_distance = []
   all_time = []
   all_settled_cnt = []
+  completed = 0
+  total = len(orig_dest_pairs)
   for orig_id, dest_id in orig_dest_pairs:
     t_start = time.process_time()
     unused_route, metadata = pathfinder.find_shortest_path(orig_id, dest_id)
@@ -60,6 +65,9 @@ def profile_algorithm(pathfinder, orig_dest_pairs):
     all_distance.append(distance)
     all_time.append(used_time)
     all_settled_cnt.append(metadata['settled'])
+    completed += 1
+    if completed % 10 == 0:
+      logger.info('Profiling[%d/%d] %s...', completed, total, pathfinder.get_name())
 
   return pd.DataFrame(data={
     'distance': all_distance,
@@ -77,32 +85,48 @@ def get_road_network_by_name(file_name):
 
 def main(argv):
   road_network = utils.load_road_network(FLAGS.region)
+  logging.info('road_network %s', road_network)
 
   random.seed(42)
   orig_dest_pairs = utils.sample_pairs(road_network, FLAGS.count)
 
   dijkstra_path_finder = DijkstraPathFinder(road_network)
   a_star_path_finder = AStarPathFinder(road_network)
-  landmark_path_finder = LandmarkPathFinder(road_network, num_landmarks=30)
+  landmark_path_finder = LandmarkPathFinder(road_network, num_landmarks=FLAGS.num_landmarks)
 
-  path_finders_to_compare = {
-    'r': dijkstra_path_finder,
-    'g': a_star_path_finder,
-    'b': landmark_path_finder,
-  }
+  path_finders_to_compare = [
+    {
+      'pathfinder': dijkstra_path_finder,
+      'color': 'r',
+    },
+    {
+      'pathfinder': a_star_path_finder,
+      'color': 'g',
+    },
+    {
+      'pathfinder': landmark_path_finder,
+      'color': 'b',
+    },
+  ]
+
+  for row in path_finders_to_compare:
+    pathfinder = row['pathfinder']
+    row['report'] = profile_algorithm(pathfinder, orig_dest_pairs)
 
   y_axis = FLAGS.y_axis  # 'time' or 'settled'
-  for color, pathfinder in path_finders_to_compare.items():
-    report = profile_algorithm(pathfinder, orig_dest_pairs)
-
-    if FLAGS.plot:
-      plt.scatter(report['distance'], report[y_axis], c=color, label=pathfinder.get_name())
-
   if FLAGS.plot:
-    plt.xlabel('Distsance (meter)')
-    plt.ylabel(y_axis)
-    plt.legend(loc='upper left')
-    plt.show()
+    for y_axis in ['time', 'settled']:
+      for row in path_finders_to_compare:
+        color = row['color']
+        pathfinder = row['pathfinder']
+        report = row['report']
+        plt.scatter(
+          report['distance'], report[y_axis],
+          c=color, s=8, label=pathfinder.get_name())
+      plt.xlabel('Distsance (meter)')
+      plt.ylabel(y_axis)
+      plt.legend(loc='upper left')
+      plt.show()
 
 
 if __name__ == '__main__':

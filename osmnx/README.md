@@ -35,7 +35,7 @@ In the Taiwan road network: there are about 229378 nodes and 592208 arcs(edges).
 
 When comparing Dijkstra and A* in a city area, A* is not always faster in the following scenarios:
  * For euclidiance distance heuristic. A route with 60 nodes, Dijkstra explored 6555 nodes, A-star explored 1704 nodes. But how we calculate the euclidiance distance vastly affects the performance of A*; For example, great circle distance taks a long time to calculate vs cartesian distance is super fast
- * For longer route accross Taiwan (e.g. Taipei to Kaohsiung), pretty much both algorithm will explore/setting the whole graph, hence it's not helping much.
+ * For longer route accross Taiwan (e.g. Taipei to Kaohsiung), pretty much both algorithm will explore/settle the whole graph, hence it's not helping much.
   ![Results](img/taiwam_dijkstra_astar.png)
 
 
@@ -53,8 +53,14 @@ nature of road network (almost a planer graph).
 
 Heuristics must be admissive (under estimate the real cost) and monotone (suffice the triangular inequality). Landmark heuristic takes a long time to precompute but is in general "closer" (under estimate less) to the real cost, hence can provide a better guidance to the real shortest path.
 
+**Heuristic Estimation**
 ![Heuristics](img/heuristics.png)
-![Landmark Speed](img/landmark_speed.png)
+
+**Number of nodes settled**
+![Landmark Settled](img/10-landmarks-settled.png)
+
+**Time used to generate route**
+![Landmark Speed](img/10-landmarks-time.png)
 
 See compare_hueristics.py
 
@@ -80,4 +86,29 @@ See compare_hueristics.py
     h(u,v) == max( dist(u,l)-dist(v,l), dist(l,v)-dist(l,u) ) <= dist(u.v)
     ```
 
+# Road Network Files
 
+We can clean & compact road network into probocol buffer format and reach a
+compression rate of 12.5% of the original file size
+See `convert_gpickle_to_proto.py` for details.
+
+## Size and time to load network using gpickle
+
+|                | Time to load | # Nodes | # Edges | Size  | PB Size |
+| -------------- | ------------ | ------- | ------- | ----- | ------- |
+| taipei         | 0.3 sec      | 11,062  | 26,045  | 5.3 M | 764k    |
+| greater_taipei | 1.12 sec     | 36,879  | 89,257  | 20 M  | 2.5 M   |
+| taiwan         | 7.11 sec     | 229,378 | 592,208 | 124 M | 16M     |
+
+## Size and time to load network using protocol buffer
+
+|                | Time to load | # Nodes | # Edges | PB Size |
+| -------------- | ------------ | ------- | ------- | ------- |
+| taipei         | 0.24 sec     | 11,062  | 26,045  | 764k    |
+| greater_taipei | 0.93 sec     | 36,879  | 89,257  | 2.5 M   |
+| taiwan         | 5.84 sec     | 229,378 | 592,208 | 16M     |
+
+## Helpful Tools
+
+Get Latitude Longitude on Map
+* https://www.latlong.net/

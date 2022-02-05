@@ -171,9 +171,13 @@ def _all_costs(road_network: nx.Graph, landmark_id : str, weight : str = "length
 def _precompute_landmark_distance(
     road_network : nx.Graph, landmark_ids : set, weight : str = 'length') -> dict:
   landmark_distance = dict()
+  generated = 0
+  total = len(landmark_ids)
   for landmark_id in landmark_ids:
     landmark_distance[landmark_id] = _all_costs(
       road_network, landmark_id, weight=weight)
+    generated += 1
+    logging.info('%d/%d landmark generated', generated, total)
   return landmark_distance
 
 class LandmarkPathFinder(BestFirstSearchPathFinder):
