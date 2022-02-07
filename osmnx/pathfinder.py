@@ -1,11 +1,13 @@
 """Path finder algorithm library"""
 
-from collections import defaultdict
 import heapq
-import math
-import numpy
-import networkx as nx
 import logging
+import math
+import networkx as nx
+import numpy
+import time
+from collections import defaultdict
+from collections import namedtuple
 
 
 EARTH_RADIUS=6371009
@@ -205,3 +207,157 @@ class LandmarkPathFinder(BestFirstSearchPathFinder):
       if tentative_heuristic_cost > heuristic_cost:
         heuristic_cost = tentative_heuristic_cost
     return heuristic_cost
+
+
+class BoundingBox:
+  """Represent a bounding box on the map"""
+  def __init__(self, north : float, south : float, east : float, west : float):
+    if not -90.0 <= south < north <= 90.0:
+      raise ValueError("Invalid bbox North: {}, South: {}".format(north, south))
+    if not (-180.0 <= east <= 180.0 or -180.0 <= west <= 180.0):
+      raise ValueError("Invalid bbox East: {}, West: {}".format(east, west))
+    self.north = north
+    self.south = south
+    self.east = east
+    self.west = west
+
+  def contains(self, lat : float, lng : float):
+    if not -90.0 <= lat <= 90.0:
+      raise ValueError("Invalid latitude {}".format(lat))
+    if not (-180.0 <= self.east <= 180.0 or -180.0 <= self.west <= 180.0):
+      raise ValueError("Invalid longitude".format(lng))
+
+    if not self.south <= lat <= self.north:
+      return False
+    if self.west <= self.east:
+      return self.west <= lng <= self.east
+    else:
+      return self.west <= lng and lng <= self.east
+
+
+class ArcFlagPathFinder(PathFinderInterface):
+  """Implement Arc Flag algorithm for a given region (bounding box)."""
+  def __init__(self, road_network, region : BoundingBox, weight='length', flag_name='R'):
+    self.road_network = road_network
+    self.weight = weight
+    self.region = region
+    self.flag_name = flag_name
+    precompute_start_time = time.process_time()
+    self._precompute_arc_flags()
+    precompute_end_time = time.process_time()
+    logging.info(
+      'ArcFlag precompute took %d seconds',
+      precompute_end_time - precompute_start_time)
+
+  def get_name(self) -> str:
+    """Returns the human readable name of the pathfinder."""
+    return "ArcFlagPathfinder"
+
+  def _precompute_arc_flags(self):
+    """Populate arc flags for the given region (bounding box)."""
+    inbound_arcs = self._get_all_inbound_arcs()
+    logging.info("Populating arc flags (%d inbound arcs)...", len(inbound_arcs))
+    for arc_id in inbound_arcs:
+      dest_id = arc_id[1]  # arc_id is a tuple of (src_id, dest_id, index)
+      self._populate_arc_flag(dest_id)
+    # Also mark all flags in bbox as a path to region.
+    for edge_key, edge_data in self.road_network.edges.items():
+      src_id, dest_id, unused_idx = edge_key
+      src_node = self.road_network.nodes[src_id]
+      dest_node = self.road_network.nodes[dest_id]
+      if (self.region.contains(src_node['y'], src_node['x']) and
+          self.region.contains(dest_node['y'], dest_node['x'])):
+        edge_data[self.flag_name] = True
+
+  def _get_all_inbound_arcs(self) -> list:
+    """Returns all inbound arc IDs for the region."""
+    inbound_arc_ids = list()
+    for edge_key, unused_edge_data in self.road_network.edges.items():
+      src_id, dest_id, unused_edge_index = edge_key
+      src_node = self.road_network.nodes[src_id]
+      if self.region.contains(src_node['y'], src_node['x']):
+        # source node in region, can't possibly be a inbound arc.
+        continue
+      dest_node = self.road_network.nodes[dest_id]
+      if self.region.contains(dest_node['y'], dest_node['x']):
+        inbound_arc_ids.append(edge_key)
+    return inbound_arc_ids
+
+  def _populate_arc_flag(self, node_id):
+    """Populate arc flags comming toward this node."""
+    arcs_to_flag = self._shortest_path_arcs(node_id)
+    for arc_key in arcs_to_flag:
+      self.road_network.edges[arc_key][self.flag_name] = True
+
+  def _shortest_path_arcs(self, destination_id):
+    """
+    Find all arcs that forms a shortest from any node to destination node
+    in the road_network.
+    Returns:
+      A set of arc IDs (source_id, dest_id, index)
+    """
+    road_network = nx.reverse_view(self.road_network)
+    all_arcs = set() # return value
+    # Run Dijkstra
+    settled = set()
+    frontier = list([(0.0, destination_id, None)])
+    while len(frontier) > 0:
+      node_cost, node_id, arc_id = heapq.heappop(frontier)
+      if node_id in settled:
+        continue
+      settled.add(node_id)
+      if arc_id:  # Add the inbound arc of the settled node to return set
+        all_arcs.add(arc_id)
+
+      for neighbor_id, edges in road_network[node_id].items():
+        if neighbor_id in settled:
+          continue
+        # It is possible to have multiple arcs for same (origin, destination) pair.
+        inbound_arc = None
+        min_edge_cost = float('inf')
+        for edge_id, attrib in edges.items():
+          if attrib[self.weight] < min_edge_cost:
+            min_edge_cost = attrib[self.weight]
+            inbound_arc = (neighbor_id ,node_id, edge_id)
+
+        new_cost = node_cost + min_edge_cost
+        heapq.heappush(frontier, (new_cost, neighbor_id, inbound_arc))
+    return all_arcs
+
+  def find_shortest_path(self, origin_id : str, destination_id : str):
+    settled = set()
+    is_from = dict()
+    cost = defaultdict(lambda : float('inf'))
+    frontier = list()
+    # Initialize
+    cost[origin_id] = 0.0
+    frontier.append((0.0, origin_id))
+    metadata = dict()
+
+    while len(frontier) > 0:
+      node_cost, node_id = heapq.heappop(frontier)
+      if node_id == destination_id:
+        route = _reconstruct_route(origin_id, destination_id, is_from)
+        metadata['settled'] = len(settled)
+        return route, metadata
+      if node_id in settled:
+        continue
+      settled.add(node_id)
+
+      for neighbor_id, edges in self.road_network[node_id].items():
+        if neighbor_id in settled:
+          continue
+
+        # It is possible to have multiple arcs for same (origin, destination) pair.
+        for attrib in edges.values():
+          # Only explore arc if it is flagged.
+          if self.flag_name in attrib:
+            tentative_new_cost = node_cost + attrib[self.weight]
+            if tentative_new_cost < cost[neighbor_id]:
+              cost[neighbor_id] = tentative_new_cost
+              is_from[neighbor_id] = node_id
+              heapq.heappush(frontier, (tentative_new_cost, neighbor_id))
+
+    # No route found
+    metadata['settled'] = len(settled)
+    return None, metadata

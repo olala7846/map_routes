@@ -6,6 +6,7 @@ import random
 from os.path import exists
 from proto.gen import road_network_pb2
 from collections import defaultdict
+from collections.abc import Callable
 
 def calc_path_cost(
     path : list, road_network : nx.Graph, weight : str ='length'):
@@ -130,3 +131,28 @@ def proto_to_network(road_network_pb: road_network_pb2.RoadNetwork) -> nx.Graph:
     graph.add_edge(
       arc.source_id, arc.destination_id, num_arcs_between, length=arc.length)
   return graph
+
+def check_path_equals(got_path, expected_path, print_error=True):
+  """Checks if two path (returned routes) equals."""
+  if not got_path or not expected_path:
+    if got_path == expected_path:
+      print('Both paths are None')
+      return True
+    else:
+      print('Expect {} while got {}'.format(expected_path, got_path))
+      return False
+
+  len_equals = (len(got_path) == len(expected_path))
+  equals = True
+  if len_equals:
+    for id1, id2 in zip(got_path, expected_path):
+      if id1 != id2:
+        equals = False
+        break
+
+  if print_error and not len_equals or not equals:
+    print('pathfinder returns incorrect path.')
+    print('Expect:', expected_path)
+    print('Got:', got_path)
+    return False
+  return len_equals and equals
