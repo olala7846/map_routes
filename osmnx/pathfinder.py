@@ -64,7 +64,7 @@ class BestFirstSearchPathFinder(PathFinderInterface):
       unused_f_score, node_id = heapq.heappop(frontier)
       if node_id == destination_id:
         route = _reconstruct_route(origin_id, destination_id, is_from)
-        metadata['settled'] = len(settled)
+        metadata['settled'] = settled
         return route, metadata
       if node_id in settled:
         continue
@@ -85,7 +85,7 @@ class BestFirstSearchPathFinder(PathFinderInterface):
           heapq.heappush(frontier, (tentative_new_cost + h_score, neighbor_id))
 
     # No route found
-    metadata['settled'] = len(settled)
+    metadata['settled'] = settled
     return None, metadata
 
 
@@ -325,6 +325,10 @@ class ArcFlagPathFinder(PathFinderInterface):
     return all_arcs
 
   def find_shortest_path(self, origin_id : str, destination_id : str):
+    dest_node = self.road_network.nodes[destination_id]
+    if not self.region.contains(dest_node['y'], dest_node['x']):
+      raise ValueError('Destination (ID {}) not in region'.format(destination_id))
+
     settled = set()
     is_from = dict()
     cost = defaultdict(lambda : float('inf'))
@@ -338,7 +342,7 @@ class ArcFlagPathFinder(PathFinderInterface):
       node_cost, node_id = heapq.heappop(frontier)
       if node_id == destination_id:
         route = _reconstruct_route(origin_id, destination_id, is_from)
-        metadata['settled'] = len(settled)
+        metadata['settled'] = settled
         return route, metadata
       if node_id in settled:
         continue
@@ -359,5 +363,5 @@ class ArcFlagPathFinder(PathFinderInterface):
               heapq.heappush(frontier, (tentative_new_cost, neighbor_id))
 
     # No route found
-    metadata['settled'] = len(settled)
+    metadata['settled'] = settled
     return None, metadata
