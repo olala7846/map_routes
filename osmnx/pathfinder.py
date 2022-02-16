@@ -4,6 +4,7 @@ import heapq
 import logging
 import math
 import networkx as nx
+import osmnx as ox
 import numpy
 import time
 from collections import defaultdict
@@ -26,10 +27,23 @@ def _reconstruct_route(origin_id, destination_id, is_from):
 
 class PathFinderInterface():
   """Base pathfinder interface."""
+  def __init__(self, road_network : nx.Graph, weight='length'):
+    self.road_network = road_network
+    self.weight = weight
 
   def get_name(self) -> str:
     """Returns the human readable name of the pathfinder."""
     return NotImplementedError("Must implement get_name")
+
+  def route(self, orig, dest):
+    orig_id = ox.distance.nearest_nodes(self.road_network, X=orig[1], Y=orig[0])
+    dest_id = ox.distance.nearest_nodes(self.road_network, X=dest[1], Y=dest[0])
+    shortest_route, unused_metadata = self.find_shortest_path(orig_id, dest_id)
+    path = []
+    for node_id in shortest_route:
+      node_data = self.road_network.nodes[node_id]
+      path.append([node_data['y'], node_data['x']])
+    return path
 
   def find_shortest_path(self, origin_id : str, destination_id : str):
     """Returns the shortest path from origin to destination."""
@@ -101,6 +115,13 @@ class DijkstraPathFinder(BestFirstSearchPathFinder):
     # Dijkstra is essentially A* without heuristic function
     return 0.0
 
+  def route_latlng(self, route):
+    """Returns an array of points(lat,lng) from route (array of node IDs)"""
+    path = []
+    for node_id in route:
+      node_data = self.road_network.nodes[node_id]
+      path.append((node_data['y'], node_data['x']))
+    return path
 
 class AStarPathFinder(BestFirstSearchPathFinder):
   """Implementation for A* algorthim."""
