@@ -7,18 +7,18 @@
 #     --algorithm=a_star
 #     --visualize
 
+import logging
 
 from absl import app
 from absl import flags
 from os.path import exists
-from pathfinder import DijkstraPathFinder
-from pathfinder import AStarPathFinder
-from pathfinder import LandmarkPathFinder
-import logging
-import matplotlib
 import networkx as nx
 import osmnx as ox
 import time
+import matplotlib
+from pathfinder import DijkstraPathFinder
+from pathfinder import AStarPathFinder
+from pathfinder import LandmarkPathFinder
 
 
 # ABSL flags: https://abseil.io/docs/python/guides/flags
@@ -26,7 +26,7 @@ FLAGS = flags.FLAGS
 
 
 flags.DEFINE_string(
-  "roadnetwork_file", "./data/greater_taipei.graphml",
+  "roadnetwork_file", "./network/greater_taipei.graphml",
   "Road network graph (graphml) file to use")
 
 # 25.0372619,121.554578 台北市政府

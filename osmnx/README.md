@@ -15,6 +15,11 @@ Build upon [GeoPandas](https://geopandas.org/en/stable/) and [NetworkX](https://
 ## NetworkX
 * [GrapView](https://networkx.org/documentation/stable/reference/classes/index.html#module-networkx.classes.graphviews) provides helpful methods like [reversing a graph](https://networkx.org/documentation/stable/reference/classes/generated/networkx.classes.graphviews.reverse_view.html#networkx.classes.graphviews.reverse_view) which can be very helpful when calculating landmark heuristic.
 
+* [MultiDigraph](https://networkx.org/documentation/stable/reference/classes/multidigraph.html)
+
+```
+The MultiDiGraph class uses a dict-of-dict-of-dict-of-dict structure. The outer dict (node_dict) holds adjacency information keyed by node. The next dict (adjlist_dict) represents the adjacency information and holds edge_key dicts keyed by neighbor. The edge_key dict holds each edge_attr dict keyed by edge key. The inner dict (edge_attr_dict) represents the edge data and holds edge attribute values keyed by attribute names.
+```
 
 ## GraphML
 http://graphml.graphdrawing.org/primer/graphml-primer.html

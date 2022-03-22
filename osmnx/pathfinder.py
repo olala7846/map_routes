@@ -7,11 +7,14 @@ import networkx as nx
 import osmnx as ox
 import numpy
 import time
+import random
 from collections import defaultdict
 from collections import namedtuple
 
 
 EARTH_RADIUS=6371009
+
+logger = logging.getLogger("pathfinder.py")
 
 
 def _reconstruct_route(origin_id, destination_id, is_from):
@@ -33,7 +36,7 @@ class PathFinderInterface():
 
   def get_name(self) -> str:
     """Returns the human readable name of the pathfinder."""
-    return NotImplementedError("Must implement get_name")
+    raise NotImplementedError("Must implement get_name")
 
   def route(self, orig, dest):
     orig_id = ox.distance.nearest_nodes(self.road_network, X=orig[1], Y=orig[0])
@@ -58,7 +61,7 @@ class BestFirstSearchPathFinder(PathFinderInterface):
 
   def heuristic_cost(self, p1_id : str, p2_id : str):
     """Returns the cartesian distance between points."""
-    return NotImplementedError("Must implement heuristic_cost")
+    raise NotImplementedError("Must implement heuristic_cost")
 
   def find_shortest_path(self, origin_id, destination_id):
     """Find the shortest path from origin_id to destination_id.
@@ -386,3 +389,122 @@ class ArcFlagPathFinder(PathFinderInterface):
     # No route found
     metadata['settled'] = settled
     return None, metadata
+
+
+class CHPathFinder(PathFinderInterface):
+  """
+  Contraction Hierarchies pathfinder
+  Must call pathfinder.build_contaction_hierarchies() separately before use
+  """
+  def __init__(
+    self, road_network : nx.Graph, weight='length',
+    build_on_init=True, num_nodes_to_contract=None):
+    # CH modifies the existing road network, so here we always make a copy.
+    self.road_network = road_network.copy()
+    self.weight = weight
+    self.num_nodes_to_contract = num_nodes_to_contract
+    self.deleted_nodes = set()
+    # The number of nodes being contracted so far. A incremental integer that
+    # will also be used as contracted order ID on the nodes, this number also
+    # help us identify if an arc is going "upward" or "downward" during two-way
+    # Dijkstra search.
+    self.num_nodes_contracted = 0
+
+    # Start contacting nodes on init, should only be set to False for unit test.
+    if build_on_init:
+      self.build_contraction_hierarchies()
+
+  def get_name(self) -> str:
+    """Returns the human readable name of the pathfinder."""
+    return "Contraction Hierarchies pathfinder"
+
+  def random_node_ordering(self):
+    nodes = None
+    if self.num_nodes_to_contract:
+      nodes = list(self.road_network.nodes)[0:self.num_nodes_to_contract]
+    else:
+      nodes = list(self.road_network.nodes)
+    random.seed(42)
+    random.shuffle(nodes)
+    return nodes
+
+  def get_shortcuts_single_source(self, node_to_contract, src_node, dest_nodes):
+    shortcuts = []
+    frontier = [(0, src_node, None)]  # (cost, node_id, from_node)
+    nodes_to_settle = set(dest_nodes)
+    settled = set()
+
+    while nodes_to_settle and frontier:
+      cost, node_id, from_node = heapq.heappop(frontier)
+      if node_id in settled:
+        continue
+      settled.add(node_id)
+
+      # remove node from dest_nodes if is in dest_nodes
+      if node_id in nodes_to_settle:
+        nodes_to_settle.remove(node_id)
+        if from_node == node_to_contract:
+          shortcuts.append((src_node, node_id, cost))
+
+      for nbr_id, edges in self.road_network[node_id].items():
+        # Skip nodes that were already contracted.
+        if nbr_id in self.deleted_nodes:
+          continue
+        min_edge_cost = min([e.get('length') for e in edges.values()])
+        heapq.heappush(frontier, (cost + min_edge_cost, nbr_id, node_id))
+
+    return shortcuts
+
+  def add_shortcuts(self, n, const_source_nodes, const_dest_nodes):
+    """
+    Add shortcuts to road_network while contraction node n
+    Note that this function modifies the road network by adding shortcuts and
+    annotations to self.road_network
+
+    Returns: number of shortcuts being added.
+    """
+    # make a copy of the source set and destination set so we don't modify
+    source_nodes = set(const_source_nodes)
+    dest_nodes = set(const_dest_nodes)
+    num_shortcuts_added = 0
+    for src_node in source_nodes:
+      short_cuts_to_add = self.get_shortcuts_single_source(n, src_node, dest_nodes)
+      num_shortcuts_added += len(short_cuts_to_add)
+      for src_id, dest_id, cost in short_cuts_to_add:
+        self.road_network.add_edge(
+          src_id, dest_id, length=cost, is_shortcut=True, shortcut_for=n)
+    return num_shortcuts_added
+
+  def contract_node(self, node_id):
+    # find all out bound arcs
+    destination_nodes = set()
+    for target_node_id in self.road_network[node_id].keys():
+      if target_node_id not in self.deleted_nodes:
+        destination_nodes.add(target_node_id)
+
+    # find all inbound arcs
+    source_nodes = set()
+    rev_road_network = nx.reverse_view(self.road_network)
+    for source_node_id in rev_road_network[node_id].keys():
+      if source_node_id not in self.deleted_nodes:
+        source_nodes.add(source_node_id)
+
+    # calculate shortest path between in-out paris and add short cuts if
+    # shortest path went through n, and mark the added arcs as going "upward"
+    num_edge_added = self.add_shortcuts(node_id, source_nodes, destination_nodes)
+    num_edge_deleted = len(source_nodes) + len(destination_nodes)
+
+    # Mark node deleted (contracted)
+    self.deleted_nodes.add(node_id)
+    self.num_nodes_contracted += 1
+    self.road_network.nodes[node_id]["contraction_id"] = self.num_nodes_contracted
+
+    return (num_edge_added, num_edge_deleted)
+
+  def build_contraction_hierarchies(self):
+    for node_id in self.random_node_ordering():
+      self.contract_node(node_id)
+
+  def find_shortest_path(self, origin_id : str, destination_id : str):
+    """Returns the shortest path from origin to destination."""
+    raise NotImplementedError("Must implement find_shortest_path")
