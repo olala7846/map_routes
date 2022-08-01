@@ -7,8 +7,7 @@
 #include <cstdint>
 #include "road_network.h"
 
-namespace hcchao
-{
+namespace hcchao {
 
 class OSMParser {
 public:

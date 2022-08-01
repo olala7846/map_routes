@@ -506,5 +506,79 @@ class CHPathFinder(PathFinderInterface):
       self.contract_node(node_id)
 
   def find_shortest_path(self, origin_id : str, destination_id : str):
-    """Returns the shortest path from origin to destination."""
-    raise NotImplementedError("Must implement find_shortest_path")
+    """Returns the shortest path from origin to destination.
+
+    In contractino heirarchies, we do a two-way Dijkstra:
+    1. Put both src and dest node into priority queue and settle nodes
+       until both ends meet.
+    2. Settled whatever left in the queue that has not been settled.
+    3. Find the shortest path and reconstruct the path using the 'shortcut_for'
+       annotation on the short-cut arcs.
+    """
+    frontier = list()  # Nodes to be settled (priority queue)
+    # Nodes that has been settled through forward search.
+    settled_forward = set()
+    # Nodes that has been settled through backward search.
+    settled_backward = set()
+    # Current minimum distance from source node (forward relxed nodes)
+    dist_source = dict()
+    # Current minimum distance to dest node (backwrad relaxed nodes)
+    dist_dest = dict()
+
+    # Create a namded tuple to make code more readable. Note that the order
+    # of attribute ('cost', 'id') is important because it will be used as
+    # the key for value comparison inside the priority_queue. E.g. compare
+    # 'cost' first and use 'id' as tie breaker.
+    Node = namedtuple('Node', ['cost', 'nid', 'forward'])
+    frontier.append(Node(cost=0, nid=origin_id, forward=True))
+    frontier.append(Node(cost=0, nid=destination_id, forward=False))
+
+
+    while len(frontier) > 0:
+      node = heapq.heappop(frontier)
+      current_cid = self.road_network.nodes[node.nid]['contraction_id']
+
+      if node.forward:
+        settled_forward.add(node.nid)
+      else:
+        settled_backward.add(node.nid)
+
+      # Stop the search when both ends meet
+      if node.nid in settled_forward and node.nid in settled_backward:
+        break
+
+      road_network = self.road_network
+      dist_label = dist_source
+      if not node.forward:
+        road_network = nx.reverse_view(road_network)
+        dist_label = dist_dest
+
+      for neighbor_id, neighbor_dict in road_network[node.nid].items():
+        # Skip arcs that's going downward (contraction order)
+        if current_cid > road_network.nodes[neighbor_id]['contraction_id']:
+          continue
+        for arc_id, attributes in neighbor_dict.items():
+          new_cost = node.code + attributes[self.weight]
+          if neighbor_id not in dist_label or dist_label[neighbor_id] > new_cost:
+            dist_label[neighbor_id] = new_cost
+            heapq.heappush(
+              frontier,
+              Node(cost=new_cost, nid=neighbor_id, forward=node.forward))
+
+    # Calculate min(dist_source[u], dist_destination[u] : for u in all relaxed nodes)
+    shortest_path_dist = float('inf')
+    shortest_path_seed_node = None
+    for nid, distance in dist_source:
+      if nid in dist_dest:
+        distance = dist_source[nid] + dist_dest[nid]
+        if distance < shortest_path_dist:
+          shortest_path_dist = distance
+          shortest_path_seed_node = nid
+
+    # Reconstruct shortest path
+    route = self.build_path_from_node(shortest_path_seed_node)
+    metadata = dict()
+    return route, metadata
+
+  def build_path_from_node(self, node_id):
+    raise NotImplementedError("Not implemented")

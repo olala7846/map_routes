@@ -6,7 +6,8 @@ int main(int argc, char* arvg[]) {
 
   hcchao::RoadNetwork road_network;
   // road_network.readFromOsmFile("taipei_daan_map.osm");
-  road_network.readFromOsmFile("lafeyette.osm");
+  std::string osmfile = "lafeyette.osm";
+  road_network.readFromOsmFile(osmfile);
 
   // Other terminations and cleanup.
   return 0;
