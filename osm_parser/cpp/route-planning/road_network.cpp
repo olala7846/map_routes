@@ -59,6 +59,51 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
   // step 3, iterate all <way> and populate arcs accordingly. And
   // construct MapArc and store in adjacent_arcs.
 
+  // resize the adjacency list and initilaize with default constructor.
+  adjacent_arcs.resize(nodes.size());
+  std::unordered_map<int64_t, int> osmid_to_idx;
+  for (int i = 0; i < nodes.size(); i++) {
+    int64_t osmid = nodes[i].osmid();
+    osmid_to_idx.insert({osmid, i});
+  }
+
+  // Iterate over all ways
+  rapidxml::xml_node<> *way = osm->first_node("way");
+  int arc_cnt = 0;
+  while(way != 0) {
+    // A way node looks like the following:
+    //   <way id=12345>
+    //    <nd ref="1001"/>
+    //    <nd ref="1002"/>
+    //    <nd ref="1003"/>
+    //    <tag k="highway" v="residential">
+    //   </way>
+    // we iterate through all segments of the way and construct the way.
+    //
+    // TODO: get tags and calculated road type & speed
+    // attribute looks like this: <tag k="highway" v="residential">
+
+    rapidxml::xml_node<> *nd = way->first_node("nd");
+    int64_t src_id, dest_id;
+    bool is_first_nd = true;
+    while(nd != 0) {
+      src_id = dest_id;
+      dest_id = std::stoll(nd->first_attribute("ref")->value());
+      if (is_first_nd) {  // skip the first node
+        is_first_nd = false;
+        continue;
+      }
+      int src_index = osmid_to_idx[src_id];
+      adjacent_arcs[src_index].emplace_back(dest_id);
+      arc_cnt++;
+      // TODO calculate cost here.
+
+      nd = nd->next_sibling("nd");
+    }
+    way = way->next_sibling("way");
+  }
+  std::cout << "Total Arcs found:" << arc_cnt << std::endl;
+
   return true;
 }
 
