@@ -50,11 +50,12 @@ class MapNode {
 // Represents an arc (edge) on the map (directed connection between nodes).
 class MapArc {
  public:
-  explicit MapArc(int64_t destination_id);
+  explicit MapArc(int64_t destination_id, float cost);
   ~MapArc() = default;
 
   // OSM ID of the arc destination node.
   int64_t destination_id() { return destination_id_; }
+  float cost() { return cost_; }
 
  private:
   int64_t destination_id_;

@@ -7,6 +7,12 @@
   "settings": {
     "python.linting.pylintArgs": [
       "--rcfile=${env:HOME}/.pylintrc"
-    ]
+    ],
+    "files.associations": {
+      "*.geojson": "json",
+      "__node_handle": "cpp",
+      "optional": "cpp",
+      "system_error": "cpp"
+    }
   }
 }

@@ -1,7 +1,6 @@
 #include "road_network.h"
 
 #include <iostream>
-#include "osm_parser.h"
 
 #include <rapidxml/rapidxml.hpp>
 #include <rapidxml/rapidxml_utils.hpp>
@@ -9,11 +8,13 @@
 namespace hcchao
 {
 
+using ::rapidxml::xml_node;
+
 MapNode::MapNode(int64_t osmid, double lat, double lon)
   : osmid_(osmid), lat_(lat), lon_(lon) {};
 
-MapArc::MapArc(int64_t destination_id)
-  : destination_id_(destination_id) {};
+MapArc::MapArc(int64_t destination_id, float cost)
+  : destination_id_(destination_id), cost_(cost) {};
 
 
 // Consturctor
@@ -21,6 +22,50 @@ RoadNetwork::RoadNetwork() {};
 
 // Destructor
 RoadNetwork::~RoadNetwork() {};
+
+// Calculates the XML way cost.
+// A way node looks like the following:
+//   <way id=12345>
+//    <nd ref="1001"/>
+//    <nd ref="1002"/>
+//    <nd ref="1003"/>
+//    <tag k="highway" v="residential">
+//   </way>
+// we iterate through all tag and find the first highway.
+float GetWayCost(xml_node<>* way) {
+  // See max speed in United States of America for Michigan
+  // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
+  static std::unordered_map<std::string, double> max_speed({
+    {"motorway", 70.0},
+    {"trunk", 55.0},
+    {"primary", 55.0},
+    {"secondary", 45.0},
+    {"tertiary", 35.0},
+    {"unclassified", 55.0},
+    {"residential", 25.0},
+    {"living_street", 25.0},
+    {"service", 25.0},
+  });
+
+  float speed = 25.0;  // default to speed of service road
+  xml_node<>* tag = way->first_node("tag");
+  while(tag != 0) {
+    std::string tag_key(tag->first_attribute("k")->value());
+    if (tag_key != "highway") {
+      tag = tag->next_sibling("tag");
+      continue;
+    }
+
+    std::string tag_val(tag->first_attribute("v")->value());
+    std::cout << "found way with k= " << tag_key << " v=" << tag_val << "\n";
+    auto itr = max_speed.find(tag_val);
+    if (itr != max_speed.end()) {
+      speed = itr->second;
+    }
+  }
+  // TODO(calculate cost): cost = distance / speed.
+  return speed;
+}
 
 // Read OSM file and construct road network and store it in class.
 // The function implementation works like the following:
@@ -78,10 +123,9 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     //    <nd ref="1003"/>
     //    <tag k="highway" v="residential">
     //   </way>
+    // we use the highway type to infer speed.
     // we iterate through all segments of the way and construct the way.
-    //
-    // TODO: get tags and calculated road type & speed
-    // attribute looks like this: <tag k="highway" v="residential">
+    float cost = GetWayCost(way);
 
     rapidxml::xml_node<> *nd = way->first_node("nd");
     int64_t src_id, dest_id;
@@ -94,9 +138,28 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
         continue;
       }
       int src_index = osmid_to_idx[src_id];
-      adjacent_arcs[src_index].emplace_back(dest_id);
+      adjacent_arcs[src_index].emplace_back(dest_id, cost);
       arc_cnt++;
       // TODO calculate cost here.
+
+
+
+      // See max speed in United States of America for Michigan
+      // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
+      // static std::unordered_map<std::string, double> max_speed({
+      //   {"motorway", 70.0},
+      //   {"trunk", 55.0},
+      //   {"primary", 55.0},
+      //   {"secondary", 45.0},
+      //   {"tertiary", 35.0},
+      //   {"unclassified", 55.0},
+      //   {"residential", 25.0},
+      //   {"living_street", 25.0},
+      //   {"service", 25.0},
+      // });
+      // bool has_highway_tag = false;
+      // bool is_one_way = false;
+      // std::string highway;
 
       nd = nd->next_sibling("nd");
     }
