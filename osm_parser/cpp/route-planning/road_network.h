@@ -33,7 +33,9 @@ class MapNode {
   explicit MapNode(int64_t osmid_, double lat, double lon);
   ~MapNode() = default;
 
-  int64_t osmid() { return osmid_; }
+  int64_t osmid() const { return osmid_; }
+  float lat() const { return lat_; }
+  float lon() const { return lon_; }
 
  private:
   // ID is a 64-bit integer number. See https://wiki.openstreetmap.org/wiki/Node#Structure

@@ -1,6 +1,7 @@
 #include "road_network.h"
 
 #include <iostream>
+#include <cmath>
 
 #include <rapidxml/rapidxml.hpp>
 #include <rapidxml/rapidxml_utils.hpp>
@@ -9,6 +10,11 @@ namespace hcchao
 {
 
 using ::rapidxml::xml_node;
+
+// The radius of earth is 6.378 km
+const static float earth_radius_meter = 6.378e6;
+// 1 mph equals 0.44704 meter per second.
+const static float mph_to_mps = 0.44704;
 
 MapNode::MapNode(int64_t osmid, double lat, double lon)
   : osmid_(osmid), lat_(lat), lon_(lon) {};
@@ -32,11 +38,12 @@ RoadNetwork::~RoadNetwork() {};
 //    <tag k="highway" v="residential">
 //   </way>
 // we iterate through all tag and find the first highway.
-float GetWayCost(xml_node<>* way) {
+float GetWaySpeedLimit(xml_node<>* way) {
   // See max speed in United States of America for Michigan
-  // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
+  // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed#United_States_of_America
+  // The speed is is for U.S.A only (mph).
   static std::unordered_map<std::string, double> max_speed({
-    {"motorway", 70.0},
+    {"motorway", 65.0},
     {"trunk", 55.0},
     {"primary", 55.0},
     {"secondary", 45.0},
@@ -56,15 +63,21 @@ float GetWayCost(xml_node<>* way) {
       continue;
     }
 
+    // update counter dictionary
     std::string tag_val(tag->first_attribute("v")->value());
-    std::cout << "found way with k= " << tag_key << " v=" << tag_val << "\n";
     auto itr = max_speed.find(tag_val);
     if (itr != max_speed.end()) {
       speed = itr->second;
     }
+    break;
   }
   // TODO(calculate cost): cost = distance / speed.
   return speed;
+}
+
+// Converts degree to radian.
+float deg2rad(float degree) {
+  return degree / 180.0 * 3.141592653589793238;
 }
 
 // Read OSM file and construct road network and store it in class.
@@ -125,41 +138,41 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     //   </way>
     // we use the highway type to infer speed.
     // we iterate through all segments of the way and construct the way.
-    float cost = GetWayCost(way);
+    float speed_mph = GetWaySpeedLimit(way);
 
     rapidxml::xml_node<> *nd = way->first_node("nd");
-    int64_t src_id, dest_id;
+    int64_t src_osmid, dest_osmid;
     bool is_first_nd = true;
     while(nd != 0) {
-      src_id = dest_id;
-      dest_id = std::stoll(nd->first_attribute("ref")->value());
+      src_osmid = dest_osmid;
+      dest_osmid = std::stoll(nd->first_attribute("ref")->value());
       if (is_first_nd) {  // skip the first node
         is_first_nd = false;
         continue;
       }
-      int src_index = osmid_to_idx[src_id];
-      adjacent_arcs[src_index].emplace_back(dest_id, cost);
+      int src_node_index = osmid_to_idx[src_osmid];
+
+      // Calculate the (approximate) great-circle distance
+      // since most of the arcs are close by (< 1km), calculating distance
+      // using the harversine formula is time consuming and can have large
+      // floating point rounding errors. Instead here I simply calculate
+      // the cord length instead.
+      // https://en.wikipedia.org/wiki/Great-circle_distance
+      const MapNode& src_node = nodes[src_node_index];
+      const MapNode& dest_node = nodes[osmid_to_idx[dest_osmid]];
+      float phi1 = deg2rad(src_node.lat());
+      float lam1 = deg2rad(src_node.lon());
+      float phi2 = deg2rad(dest_node.lat());
+      float lam2 = deg2rad(dest_node.lon());
+      float dx = (std::cos(phi2) * std::cos(lam2)
+                  - std::cos(phi1) * std::cos(lam1));
+      float dy = (std::cos(phi2) * std::sin(lam2)
+                  - std::cos(phi1) * std::sin(lam1));
+      float dz = std::sin(phi2) - std::sin(phi1);
+      float chord = std::sqrt(dx*dx + dy*dy + dz*dz) * earth_radius_meter;
+      float cost_seconds = chord / (speed_mph * mph_to_mps);
+      adjacent_arcs[src_node_index].emplace_back(dest_osmid, cost_seconds);
       arc_cnt++;
-      // TODO calculate cost here.
-
-
-
-      // See max speed in United States of America for Michigan
-      // https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
-      // static std::unordered_map<std::string, double> max_speed({
-      //   {"motorway", 70.0},
-      //   {"trunk", 55.0},
-      //   {"primary", 55.0},
-      //   {"secondary", 45.0},
-      //   {"tertiary", 35.0},
-      //   {"unclassified", 55.0},
-      //   {"residential", 25.0},
-      //   {"living_street", 25.0},
-      //   {"service", 25.0},
-      // });
-      // bool has_highway_tag = false;
-      // bool is_one_way = false;
-      // std::string highway;
 
       nd = nd->next_sibling("nd");
     }
