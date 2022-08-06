@@ -6,10 +6,11 @@
 #define HCCHAO_ROAD_NETWORK_H_
 
 #include <cstdint>
+#include <list>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
-#include <list>
 
 namespace hcchao
 {
@@ -56,7 +57,7 @@ class MapArc {
   ~MapArc() = default;
 
   // OSM ID of the arc destination node.
-  int64_t destination_id() { return destination_id_; }
+  int64_t destination_id() const { return destination_id_; }
   float cost() { return cost_; }
 
  private:
@@ -75,6 +76,9 @@ class RoadNetwork {
   // Read road network from OSM file.
   // Returns true if read operation was successful.
   bool readFromOsmFile(const std::string& filename);
+
+  // Reduce the road network into the largest connceted component.
+  bool reduceToLargestConnectedComponent();
 
   // All the nodes in the graph. The order of this vector will always be the same as
   // the adjacent_arcs below.
@@ -97,6 +101,20 @@ class RoadNetwork {
   // int64_t src_osmid = nodes[3].osmid();
   // int64_t dest_osmid = adjacentArcs[3][4].dest_id();
   std::vector<std::list<MapArc> > adjacent_arcs;
+
+ private:
+
+  // Find all connected components, returns false on error.
+  bool findConnectedComponents(
+      std::unordered_set<int64_t>& road_network_unvisited,
+      std::vector<std::unordered_set<int64_t> >& components);
+
+  // Mapping beteween osmid to class property 'nodes' vector index.
+  std::unordered_map<int64_t, int> osmid_to_index_;
+
+  // Whether the road network has been reduced into the largest connected
+  // component. See reduceToLargestConnectedComponent() function.
+  bool reduced_;
 };
 
 } // namespace hcchao

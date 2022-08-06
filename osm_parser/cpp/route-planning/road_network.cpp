@@ -1,7 +1,10 @@
 #include "road_network.h"
 
-#include <iostream>
 #include <cmath>
+#include <iostream>
+#include <memory>
+#include <unordered_set>
+#include <utility>
 
 #include <rapidxml/rapidxml.hpp>
 #include <rapidxml/rapidxml_utils.hpp>
@@ -24,7 +27,9 @@ MapArc::MapArc(int64_t destination_id, float cost)
 
 
 // Consturctor
-RoadNetwork::RoadNetwork() {};
+RoadNetwork::RoadNetwork() {
+  reduced_ = false;
+};
 
 // Destructor
 RoadNetwork::~RoadNetwork() {};
@@ -54,25 +59,48 @@ float GetWaySpeedLimit(xml_node<>* way) {
     {"service", 25.0},
   });
 
+  // TODO: speed can be read directly from tags keyed by "maxspeed",
+  // "maxspeed:forward", "maxspeed:backward".
+
   float speed = 25.0;  // default to speed of service road
+  bool has_speed = false;
   xml_node<>* tag = way->first_node("tag");
+  std::unique_ptr<std::string> highway_ptr;
   while(tag != 0) {
     std::string tag_key(tag->first_attribute("k")->value());
-    if (tag_key != "highway") {
-      tag = tag->next_sibling("tag");
-      continue;
+    if (tag_key == "highway") {
+      std::string highway(tag->first_attribute("v")->value());
+      highway_ptr = std::make_unique<std::string>(highway);
+      break;
     }
+    tag = tag->next_sibling("tag");
+  }
 
-    // update counter dictionary
-    std::string tag_val(tag->first_attribute("v")->value());
-    auto itr = max_speed.find(tag_val);
+  // must check before dereference, otherwise segfault
+  if (highway_ptr != nullptr) {
+    // Infer speed from road type
+    auto itr = max_speed.find(*highway_ptr);
     if (itr != max_speed.end()) {
       speed = itr->second;
     }
-    break;
   }
-  // TODO(calculate cost): cost = distance / speed.
+
   return speed;
+}
+
+// Determines whether a way is one way only. Returns true if one way.
+float IsWayOneWay(xml_node<>* way) {
+  xml_node<>* tag = way->first_node("tag");
+  while(tag != 0) {
+    std::string tag_key(tag->first_attribute("k")->value());
+    if (tag_key == "oneway") {
+      std::string tag_val(tag->first_attribute("v")->value());
+      return (tag_val == "yes")? true : false;
+    }
+    tag = tag->next_sibling("tag");
+  }
+  // unspecified.
+  return false;
 }
 
 // Converts degree to radian.
@@ -119,10 +147,9 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
 
   // resize the adjacency list and initilaize with default constructor.
   adjacent_arcs.resize(nodes.size());
-  std::unordered_map<int64_t, int> osmid_to_idx;
   for (int i = 0; i < nodes.size(); i++) {
     int64_t osmid = nodes[i].osmid();
-    osmid_to_idx.insert({osmid, i});
+    osmid_to_index_.insert({osmid, i});
   }
 
   // Iterate over all ways
@@ -139,18 +166,22 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     // we use the highway type to infer speed.
     // we iterate through all segments of the way and construct the way.
     float speed_mph = GetWaySpeedLimit(way);
+    bool one_way = IsWayOneWay(way);
 
     rapidxml::xml_node<> *nd = way->first_node("nd");
+    // initialize first node
     int64_t src_osmid, dest_osmid;
-    bool is_first_nd = true;
+    if (nd == 0) {
+      std::cerr << "Can't find nd in way.\n";
+      break;
+    }
+    src_osmid = std::stoll(nd->first_attribute("ref")->value());
+    nd = nd->next_sibling("nd");
+
     while(nd != 0) {
-      src_osmid = dest_osmid;
       dest_osmid = std::stoll(nd->first_attribute("ref")->value());
-      if (is_first_nd) {  // skip the first node
-        is_first_nd = false;
-        continue;
-      }
-      int src_node_index = osmid_to_idx[src_osmid];
+      int src_node_index = osmid_to_index_[src_osmid];
+      int dest_node_index = osmid_to_index_[dest_osmid];
 
       // Calculate the (approximate) great-circle distance
       // since most of the arcs are close by (< 1km), calculating distance
@@ -159,7 +190,7 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
       // the cord length instead.
       // https://en.wikipedia.org/wiki/Great-circle_distance
       const MapNode& src_node = nodes[src_node_index];
-      const MapNode& dest_node = nodes[osmid_to_idx[dest_osmid]];
+      const MapNode& dest_node = nodes[dest_node_index];
       float phi1 = deg2rad(src_node.lat());
       float lam1 = deg2rad(src_node.lon());
       float phi2 = deg2rad(dest_node.lat());
@@ -171,15 +202,81 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
       float dz = std::sin(phi2) - std::sin(phi1);
       float chord = std::sqrt(dx*dx + dy*dy + dz*dz) * earth_radius_meter;
       float cost_seconds = chord / (speed_mph * mph_to_mps);
+
+      // Add new node to adjacency arcs.
       adjacent_arcs[src_node_index].emplace_back(dest_osmid, cost_seconds);
       arc_cnt++;
+      if (!one_way) {
+        adjacent_arcs[dest_node_index].emplace_back(src_osmid, cost_seconds);
+        arc_cnt++;
+      }
 
+      src_osmid = dest_osmid;
       nd = nd->next_sibling("nd");
     }
     way = way->next_sibling("way");
   }
   std::cout << "Total Arcs found:" << arc_cnt << std::endl;
 
+  return true;
+}
+
+// Returns false if error is encountered.
+bool RoadNetwork::reduceToLargestConnectedComponent() {
+  if (reduced_) return true;  // already reduced.
+
+  std::unordered_set<int64_t> unvisited_nodes;
+  for (const auto& node : nodes) {
+    unvisited_nodes.insert(node.osmid());
+  }
+  auto next_node = unvisited_nodes.begin();
+  std::vector<std::unordered_set<int64_t>> components;
+  if (!findConnectedComponents(unvisited_nodes, components)) {
+    return false;
+  }
+
+  // TODO: find the largest component and delete the rest from the
+  // current node network.
+  std::cerr << "Reduce not implemented yet.\n";
+  return false;  // not implemented yet.
+
+  // reduced_ = true;
+  // return true;
+}
+
+bool RoadNetwork::findConnectedComponents(
+    std::unordered_set<int64_t>& unexplored,
+    std::vector<std::unordered_set<int64_t>>& components) {
+  while (!unexplored.empty()) {
+    int64_t start_node_id = *unexplored.begin();
+    std::unordered_set<int64_t> connected_component;
+    // A queue of nodes to be explored.
+    std::list<int64_t> frontier {start_node_id};
+
+    // Here we assumes the road network is a strongly connected directed
+    // graph.
+    while (!frontier.empty()) {
+      int64_t src_node_osmid = frontier.front();  // currend not osmid.
+      frontier.pop_front();
+
+      auto search = unexplored.find(src_node_osmid);
+      if (search == unexplored.end()) {
+        continue;
+      }
+      // Else, remove it from unexplored set.
+      unexplored.erase(search);
+      connected_component.insert(src_node_osmid);
+
+      auto outbound_arcs = adjacent_arcs[osmid_to_index_[src_node_osmid]];
+      for (const auto& arc : outbound_arcs) {
+        int64_t dest_node_osmid = arc.destination_id();
+        frontier.push_back(dest_node_osmid);
+      }
+    }
+
+    // no copy
+    components.push_back(std::move(connected_component));
+  }
   return true;
 }
 

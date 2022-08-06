@@ -4,7 +4,7 @@ main: main.o road_network.o
 	clang++ main.o road_network.o
 
 main.o: main.cpp
-	clang++ -c main.cpp -I /opt/include/
+	clang++ -c main.cpp -I /opt/include/ -std=c++17
 
 # 3rd party library should be copied under /opt/include
 # in order for g++ to link.
