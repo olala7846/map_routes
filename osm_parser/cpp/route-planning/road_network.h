@@ -78,7 +78,7 @@ class RoadNetwork {
   bool readFromOsmFile(const std::string& filename);
 
   // Reduce the road network into the largest connceted component.
-  bool reduceToLargestConnectedComponent();
+  void reduceToLargestConnectedComponent();
 
   // All the nodes in the graph. The order of this vector will always be the same as
   // the adjacent_arcs below.
@@ -104,9 +104,9 @@ class RoadNetwork {
 
  private:
 
-  // Find all connected components, returns false on error.
-  bool findConnectedComponents(
-      std::unordered_set<int64_t>& road_network_unvisited,
+  // Find all connected components.
+  void findConnectedComponents(
+      std::unordered_set<int64_t>& unexpored,
       std::vector<std::unordered_set<int64_t> >& components);
 
   // Mapping beteween osmid to class property 'nodes' vector index.

@@ -1,10 +1,12 @@
 #include "road_network.h"
 
 #include <cmath>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <unordered_set>
 #include <utility>
+#include <map>
 
 #include <rapidxml/rapidxml.hpp>
 #include <rapidxml/rapidxml_utils.hpp>
@@ -155,6 +157,8 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
   // Iterate over all ways
   rapidxml::xml_node<> *way = osm->first_node("way");
   int arc_cnt = 0;
+  int one_way_cnt = 0;
+  int two_way_cnt = 0;
   while(way != 0) {
     // A way node looks like the following:
     //   <way id=12345>
@@ -167,6 +171,11 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     // we iterate through all segments of the way and construct the way.
     float speed_mph = GetWaySpeedLimit(way);
     bool one_way = IsWayOneWay(way);
+    if (one_way) {
+      ++one_way_cnt;
+    } else {
+      ++two_way_cnt;
+    }
 
     rapidxml::xml_node<> *nd = way->first_node("nd");
     // initialize first node
@@ -216,14 +225,35 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     }
     way = way->next_sibling("way");
   }
+  std::cout << "one_way: " << one_way_cnt << " two_way: " << two_way_cnt << std::endl;
   std::cout << "Total Arcs found:" << arc_cnt << std::endl;
+
+  // Print statistics about this road network.
+  std::map<int, int> counter;
+  for (const auto& arc_list: adjacent_arcs) {
+    int num_out_going_arcs = arc_list.size();
+    if (counter.find(num_out_going_arcs) != counter.end()) {
+      counter[num_out_going_arcs] += 1;
+    } else {
+      counter.insert({num_out_going_arcs, 1});
+    }
+  }
+
+  for (auto [num_outgoing_arcs, count] : counter) {
+    std::cout << "node with " << num_outgoing_arcs << " out going arcs: ";
+    std::cout << count << "\n";
+  }
 
   return true;
 }
 
+// TODO: replace error status with exception.
 // Returns false if error is encountered.
-bool RoadNetwork::reduceToLargestConnectedComponent() {
-  if (reduced_) return true;  // already reduced.
+void RoadNetwork::reduceToLargestConnectedComponent() {
+  if (reduced_) {
+    std::cout << "Already reduced to largest connected component.";
+    return;  // already reduced.
+  }
 
   std::unordered_set<int64_t> unvisited_nodes;
   for (const auto& node : nodes) {
@@ -231,39 +261,48 @@ bool RoadNetwork::reduceToLargestConnectedComponent() {
   }
   auto next_node = unvisited_nodes.begin();
   std::vector<std::unordered_set<int64_t>> components;
-  if (!findConnectedComponents(unvisited_nodes, components)) {
-    return false;
+  findConnectedComponents(unvisited_nodes, components);
+
+  std::cout << "total number of components: " << components.size() << "\n";
+
+  std::vector<int> component_size;
+  for (const auto& component : components) {
+    component_size.push_back(component.size());
+  }
+  std::sort(component_size.begin(), component_size.end());
+  std::cout << "largest component is of sizes:\n";
+  for (int i = 0; i < 10; i++) {
+    std::cout << i+1 << ": " << component_size[component_size.size() - 1 -i] << "\n";
   }
 
-  // TODO: find the largest component and delete the rest from the
+  // TODO: Reduce road network.
   // current node network.
-  std::cerr << "Reduce not implemented yet.\n";
-  return false;  // not implemented yet.
+  throw std::logic_error{"reduceToLargestConnectedComponent not implemented yet"};
 
-  // reduced_ = true;
-  // return true;
+  reduced_ = true;
+  return;
 }
 
-bool RoadNetwork::findConnectedComponents(
+void RoadNetwork::findConnectedComponents(
     std::unordered_set<int64_t>& unexplored,
     std::vector<std::unordered_set<int64_t>>& components) {
+  // Here we assumes the road network is a strongly connected directed
+  // graph. So which ever node is not strongly (bi-directional) connected
+  // to the connected component is considered thier own component.
   while (!unexplored.empty()) {
     int64_t start_node_id = *unexplored.begin();
     std::unordered_set<int64_t> connected_component;
+
     // A queue of nodes to be explored.
     std::list<int64_t> frontier {start_node_id};
-
-    // Here we assumes the road network is a strongly connected directed
-    // graph.
     while (!frontier.empty()) {
       int64_t src_node_osmid = frontier.front();  // currend not osmid.
       frontier.pop_front();
 
       auto search = unexplored.find(src_node_osmid);
       if (search == unexplored.end()) {
-        continue;
+        continue;  // skip if already explored.
       }
-      // Else, remove it from unexplored set.
       unexplored.erase(search);
       connected_component.insert(src_node_osmid);
 
@@ -277,7 +316,6 @@ bool RoadNetwork::findConnectedComponents(
     // no copy
     components.push_back(std::move(connected_component));
   }
-  return true;
 }
 
 } // namespace hcchao
