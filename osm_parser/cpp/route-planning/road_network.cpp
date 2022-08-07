@@ -225,24 +225,6 @@ bool RoadNetwork::readFromOsmFile(const std::string& filename) {
     }
     way = way->next_sibling("way");
   }
-  std::cout << "one_way: " << one_way_cnt << " two_way: " << two_way_cnt << std::endl;
-  std::cout << "Total Arcs found:" << arc_cnt << std::endl;
-
-  // Print statistics about this road network.
-  std::map<int, int> counter;
-  for (const auto& arc_list: adjacent_arcs) {
-    int num_out_going_arcs = arc_list.size();
-    if (counter.find(num_out_going_arcs) != counter.end()) {
-      counter[num_out_going_arcs] += 1;
-    } else {
-      counter.insert({num_out_going_arcs, 1});
-    }
-  }
-
-  for (auto [num_outgoing_arcs, count] : counter) {
-    std::cout << "node with " << num_outgoing_arcs << " out going arcs: ";
-    std::cout << count << "\n";
-  }
 
   return true;
 }
@@ -263,22 +245,37 @@ void RoadNetwork::reduceToLargestConnectedComponent() {
   std::vector<std::unordered_set<int64_t>> components;
   findConnectedComponents(unvisited_nodes, components);
 
-  std::cout << "total number of components: " << components.size() << "\n";
+  // Sort by size descending.
+  std::sort(components.begin(), components.end(), [](auto a, auto b){
+    return a.size() > b.size();
+  });
+  // largest connected component
+  std::unordered_set<int64_t> lcc = components[0];
 
-  std::vector<int> component_size;
-  for (const auto& component : components) {
-    component_size.push_back(component.size());
+  // Reduce non connected nodes. Modifying two vector while iterating it
+  // is painful. Here we simply rebuild the whole nodes and adjacent_arcs
+  // instead.
+  std::vector<MapNode> reduced_nodes;
+  std::vector<std::list<MapArc> > reduced_adjacent_arcs;
+  std::unordered_map<int64_t, int> reduced_osmid_to_index;
+  for (const auto& osmid: lcc) {
+    const int index = osmid_to_index_[osmid];
+    int new_idx = reduced_nodes.size();
+    reduced_osmid_to_index[osmid] = new_idx;
+    reduced_nodes.push_back(nodes[index]);
+    std::list<MapArc> new_arcs;
+    for (const auto& arc : adjacent_arcs[index]) {
+      int destination_id = arc.destination_id();
+      if (lcc.find(destination_id) == lcc.end()) {
+        continue; // skip nodes not in lcc.
+      }
+      new_arcs.push_back(arc);
+    }
+    reduced_adjacent_arcs.push_back(std::move(new_arcs));
   }
-  std::sort(component_size.begin(), component_size.end());
-  std::cout << "largest component is of sizes:\n";
-  for (int i = 0; i < 10; i++) {
-    std::cout << i+1 << ": " << component_size[component_size.size() - 1 -i] << "\n";
-  }
-
-  // TODO: Reduce road network.
-  // current node network.
-  throw std::logic_error{"reduceToLargestConnectedComponent not implemented yet"};
-
+  nodes = reduced_nodes;
+  adjacent_arcs = reduced_adjacent_arcs;
+  osmid_to_index_ = reduced_osmid_to_index;
   reduced_ = true;
   return;
 }
@@ -316,6 +313,34 @@ void RoadNetwork::findConnectedComponents(
     // no copy
     components.push_back(std::move(connected_component));
   }
+}
+
+std::ostream& operator<< (std::ostream& os, const RoadNetwork& rn) {
+
+  // Print statistics about this road network.
+  std::map<int, int> counter;
+  for (const auto& arc_list: rn.adjacent_arcs) {
+    int num_out_going_arcs = arc_list.size();
+    if (counter.find(num_out_going_arcs) != counter.end()) {
+      counter[num_out_going_arcs] += 1;
+    } else {
+      counter.insert({num_out_going_arcs, 1});
+    }
+  }
+
+  int num_arcs = 0;
+  for (const auto& l : rn.adjacent_arcs) {
+    num_arcs += l.size();
+  }
+
+  os << "hcchao::RoadNetwork(" << rn.nodes.size() << " nodes, "
+     << num_arcs << " arcs)\n";
+
+  for (auto [num_outgoing_arcs, count] : counter) {
+    os << "  node with " << num_outgoing_arcs << " out going arcs: "
+       << count << "\n";
+  }
+  return os;
 }
 
 } // namespace hcchao

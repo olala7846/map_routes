@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <iostream>
 
 namespace hcchao
 {
@@ -101,6 +102,9 @@ class RoadNetwork {
   // int64_t src_osmid = nodes[3].osmid();
   // int64_t dest_osmid = adjacentArcs[3][4].dest_id();
   std::vector<std::list<MapArc> > adjacent_arcs;
+
+  // Format road network as ostream for debugging.
+  friend std::ostream& operator<< (std::ostream& os, const RoadNetwork& rn);
 
  private:
 
